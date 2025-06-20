@@ -25,14 +25,14 @@ export interface AIResponse {
 
 // Global AI configuration - using environment variable
 const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-const model = "deepseek/deepseek-chat-v3-0324";
+const model = "deepseek/deepseek-chat-v3-0324:free";
 
 export const AI_CONFIG: AIConfig = {
   type: 'openrouter',
-  name: 'DeepSeek via OpenRouter',
+  name: 'DeepSeek v3 via OpenRouter',
   key: apiKey || '',
   default_model: model,
-  description: 'Primary AI engine for all AidJobs tools — including JD generation, CV analysis, matching, refinement, tone suggestions, skill gaps, cover letters, and admin panel actions. Connected via OpenRouter.'
+  description: 'Primary AI engine for all AidJobs tools — including JD generation, CV analysis, matching, refinement, tone suggestions, skill gaps, cover letters, and admin panel actions. Connected via OpenRouter using DeepSeek v3 free tier.'
 };
 
 // Validate AI configuration
