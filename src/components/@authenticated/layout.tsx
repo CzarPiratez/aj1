@@ -27,7 +27,11 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
           .maybeSingle();
 
         if (existingProfile) {
-          setProfile(existingProfile);
+          // Map database fields to expected format
+          setProfile({
+            ...existingProfile,
+            name: existingProfile.full_name || existingProfile.email?.split('@')[0] || 'User'
+          });
           return;
         }
 
@@ -35,11 +39,11 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
         const newUserData = {
           id: user.id,
           email: user.email,
-          name: user.user_metadata?.name || 
-                user.user_metadata?.full_name || 
-                user.email?.split('@')[0] || 
-                'User',
-          is_admin: false
+          full_name: user.user_metadata?.full_name || 
+                    user.user_metadata?.name || 
+                    user.email?.split('@')[0] || 
+                    'User',
+          avatar_url: user.user_metadata?.avatar_url || null
         };
 
         const { data: newProfile, error: createError } = await supabase
@@ -51,9 +55,15 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
         if (createError) {
           console.error('Error creating profile:', createError);
           // Use fallback profile
-          setProfile(newUserData);
+          setProfile({
+            ...newUserData,
+            name: newUserData.full_name
+          });
         } else {
-          setProfile(newProfile);
+          setProfile({
+            ...newProfile,
+            name: newProfile.full_name || newProfile.email?.split('@')[0] || 'User'
+          });
         }
       } catch (error) {
         console.error('Error fetching profile:', error);
@@ -61,8 +71,8 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
         setProfile({
           id: user.id,
           email: user.email,
-          name: user.user_metadata?.name || 'User',
-          is_admin: false
+          name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'User'
         });
       }
     };

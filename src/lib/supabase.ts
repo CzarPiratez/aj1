@@ -70,57 +70,83 @@ if (hasValidCredentials) {
 export interface User {
   id: string;
   email: string;
-  name: string;
-  is_admin: boolean;
+  full_name: string;
+  avatar_url?: string;
   created_at: string;
+  updated_at: string;
 }
 
-export interface Organization {
+export interface UserPreferences {
   id: string;
   user_id: string;
-  name: string;
-  sector: string;
-  logo_url?: string;
-  location?: string;
+  theme: 'light' | 'dark' | 'system';
+  language: string;
+  notifications_enabled: boolean;
   created_at: string;
+  updated_at: string;
+}
+
+export interface UserProgressFlags {
+  user_id: string;
+  has_uploaded_cv: boolean;
+  has_analyzed_cv: boolean;
+  has_selected_job: boolean;
+  has_written_cover_letter: boolean;
+  has_published_job: boolean;
+  has_applied_to_job: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Job {
   id: string;
-  org_id: string;
+  user_id: string;
   title: string;
   description: string;
-  location?: string;
+  organization_name?: string;
+  organization_url?: string;
+  org_name?: string;
+  org_website?: string;
   responsibilities?: string;
-  requirements?: string;
+  qualifications?: string;
+  sdgs?: string[];
+  sector?: string;
+  contract_type?: string;
+  location?: string;
+  how_to_apply?: string;
+  application_end_date?: string;
+  status: 'draft' | 'published' | 'archived';
+  published_at?: string;
   created_at: string;
-  organization?: Organization;
+  updated_at: string;
 }
 
-export interface Resume {
+export interface Conversation {
+  id: string;
+  title: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+  is_archived: boolean;
+}
+
+export interface Message {
+  id: string;
+  conversation_id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  created_at: string;
+  metadata?: any;
+  model_used?: string;
+}
+
+export interface ChatSession {
   id: string;
   user_id: string;
-  filename: string;
-  parsed_data_json?: any;
+  title: string;
   created_at: string;
-}
-
-export interface Match {
-  id: string;
-  job_id: string;
-  resume_id: string;
-  ai_score: number;
-  explanation_json?: any;
-  created_at: string;
-  job?: Job;
-  resume?: Resume;
-}
-
-export interface Prompt {
-  id: string;
-  name: string;
-  type: string;
-  model: string;
-  content: string;
-  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message_at?: string;
 }
