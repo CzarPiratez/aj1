@@ -23,14 +23,14 @@ export interface AIResponse {
   };
 }
 
-// Global AI configuration - using environment variable or fallback
-const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || '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';
+// Global AI configuration - ONLY use environment variable
+const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
 const model = "deepseek/deepseek-chat-v3-0324:free";
 
 export const AI_CONFIG: AIConfig = {
   type: 'openrouter',
   name: 'DeepSeek v3 via OpenRouter',
-  key: apiKey,
+  key: apiKey || '',
   default_model: model,
   description: 'Primary AI engine for all AidJobs tools — including JD generation, CV analysis, matching, refinement, tone suggestions, skill gaps, cover letters, and admin panel actions. Connected via OpenRouter using DeepSeek v3 free tier.'
 };
@@ -39,6 +39,7 @@ export const AI_CONFIG: AIConfig = {
 export function validateAIConfig(): boolean {
   if (!AI_CONFIG.key) {
     console.error('❌ OpenRouter API key not found. Please set VITE_OPENROUTER_API_KEY in your .env file');
+    console.error('📝 Get your API key from: https://openrouter.ai/keys');
     return false;
   }
   
@@ -61,7 +62,7 @@ export async function callAI(
   } = {}
 ): Promise<AIResponse> {
   if (!validateAIConfig()) {
-    throw new Error('AI configuration is invalid. Please check your OpenRouter API key.');
+    throw new Error('AI configuration is invalid. Please check your OpenRouter API key in your .env file.');
   }
 
   const {
@@ -94,6 +95,11 @@ export async function callAI(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('❌ OpenRouter API error:', response.status, errorData);
+      
+      if (response.status === 429) {
+        throw new Error(`Rate limit exceeded. Please add credits to your OpenRouter account or wait for the rate limit to reset. Visit: https://openrouter.ai/credits`);
+      }
+      
       throw new Error(`OpenRouter API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
     }
 
@@ -442,6 +448,14 @@ export async function checkAIStatus(): Promise<{
   error?: string;
 }> {
   try {
+    if (!validateAIConfig()) {
+      return {
+        available: false,
+        model: AI_CONFIG.default_model,
+        error: 'API key not configured. Please set VITE_OPENROUTER_API_KEY in your .env file.'
+      };
+    }
+
     const response = await callAI([
       { role: 'user', content: 'Hello, please respond with "AI service is working"' }
     ], { max_tokens: 50 });
@@ -462,20 +476,29 @@ export async function checkAIStatus(): Promise<{
 // Initialize AI service on app start
 export function initializeAI(): void {
   console.log('🔧 Initializing AI Service...');
-  console.log('🔑 API Key:', AI_CONFIG.key ? `${AI_CONFIG.key.substring(0, 20)}...` : 'Not found');
+  console.log('🔑 API Key:', AI_CONFIG.key ? `${AI_CONFIG.key.substring(0, 20)}...` : 'Not configured');
   console.log('🤖 Model:', AI_CONFIG.default_model);
+  
+  if (!AI_CONFIG.key) {
+    console.warn('⚠️ OpenRouter API key not found in environment variables');
+    console.warn('📝 Please set VITE_OPENROUTER_API_KEY in your .env file');
+    console.warn('🔗 Get your API key from: https://openrouter.ai/keys');
+    return;
+  }
   
   if (validateAIConfig()) {
     console.log('✅ AI Service initialized:', AI_CONFIG.name);
     console.log('📝 Description:', AI_CONFIG.description);
     
-    // Test the connection
+    // Test the connection (but don't block initialization)
     checkAIStatus().then(status => {
       if (status.available) {
         console.log('🟢 AI Service is online and ready');
       } else {
         console.log('🔴 AI Service is offline:', status.error);
       }
+    }).catch(error => {
+      console.log('🔴 AI Service connection test failed:', error.message);
     });
   } else {
     console.warn('⚠️ AI Service not properly configured');
