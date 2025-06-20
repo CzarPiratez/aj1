@@ -122,7 +122,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       setMessages(prev => [...prev, responseMessage]);
       updateMainContent(currentInput);
-      updateProgressBasedOnInput(currentInput);
+      await updateProgressBasedOnInput(currentInput);
     } catch (error) {
       console.error('Error getting AI response:', error);
       
@@ -136,7 +136,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       setMessages(prev => [...prev, aiResponse]);
       updateMainContent(currentInput);
-      updateProgressBasedOnInput(currentInput);
+      await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
     }
@@ -252,19 +252,40 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   const updateProgressBasedOnInput = async (userInput: string) => {
+    if (!profile?.id) {
+      console.warn('Cannot update progress: profile or user ID not available');
+      return;
+    }
+
     const input = userInput.toLowerCase();
     
-    if (input.includes('upload') && input.includes('cv')) {
-      await updateFlag('has_uploaded_cv', true);
-      setTimeout(() => updateFlag('has_analyzed_cv', true), 2000);
-    } else if (input.includes('search') && input.includes('job')) {
-      await updateFlag('has_selected_job', true);
-    } else if (input.includes('cover letter') && !input.includes('refine')) {
-      await updateFlag('has_written_cover_letter', true);
-    } else if (input.includes('post') && input.includes('job')) {
-      // This will be updated when job is actually published
-    } else if (input.includes('applied') || input.includes('apply')) {
-      await updateFlag('has_applied_to_job', true);
+    try {
+      if (input.includes('upload') && input.includes('cv')) {
+        console.log('Updating CV upload progress...');
+        await updateFlag('has_uploaded_cv', true);
+        setTimeout(async () => {
+          console.log('Updating CV analysis progress...');
+          await updateFlag('has_analyzed_cv', true);
+        }, 2000);
+      } else if (input.includes('search') && input.includes('job')) {
+        console.log('Updating job selection progress...');
+        await updateFlag('has_selected_job', true);
+      } else if (input.includes('cover letter') && !input.includes('refine')) {
+        console.log('Updating cover letter progress...');
+        await updateFlag('has_written_cover_letter', true);
+      } else if (input.includes('applied') || input.includes('apply')) {
+        console.log('Updating job application progress...');
+        await updateFlag('has_applied_to_job', true);
+      }
+    } catch (error) {
+      console.error('Error updating progress based on input:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userInput,
+        userId: profile?.id
+      });
+      
+      // Show user-friendly error message
+      toast.error('Failed to update progress. Please try again.');
     }
   };
 
@@ -303,7 +324,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -327,8 +348,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         sender: 'assistant',
         timestamp: new Date(),
       }]);
-      updateFlag('has_uploaded_cv', true);
-      setTimeout(() => updateFlag('has_analyzed_cv', true), 2000);
+      
+      try {
+        await updateFlag('has_uploaded_cv', true);
+        setTimeout(async () => {
+          await updateFlag('has_analyzed_cv', true);
+        }, 2000);
+      } catch (error) {
+        console.error('Error updating CV upload progress:', error);
+        toast.error('Failed to update progress. Please try again.');
+      }
     } else {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
