@@ -23,14 +23,14 @@ export interface AIResponse {
   };
 }
 
-// Global AI configuration - using environment variable
-const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+// Global AI configuration - using environment variable or fallback
+const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || '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';
 const model = "deepseek/deepseek-chat-v3-0324:free";
 
 export const AI_CONFIG: AIConfig = {
   type: 'openrouter',
   name: 'DeepSeek v3 via OpenRouter',
-  key: apiKey || '',
+  key: apiKey,
   default_model: model,
   description: 'Primary AI engine for all AidJobs tools — including JD generation, CV analysis, matching, refinement, tone suggestions, skill gaps, cover letters, and admin panel actions. Connected via OpenRouter using DeepSeek v3 free tier.'
 };
