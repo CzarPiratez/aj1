@@ -7,7 +7,9 @@ import {
   Mic,
   Square,
   Globe,
-  Loader2
+  Loader2,
+  FileText,
+  Link
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,10 +28,11 @@ import {
   type WebsiteContent 
 } from '@/lib/jobBuilder';
 import { 
-  saveJDInput, 
-  generateJDFromInput, 
-  validateManualInput, 
-  parseManualInput,
+  processJDInput,
+  generateJDFromInput,
+  validateBriefInput,
+  isValidUrl as isValidJDUrl,
+  extractDomain as extractJDDomain,
   type JDInput,
   type JDDraft
 } from '@/lib/jobDescriptionService';
@@ -169,32 +172,30 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Update progress flag
       await updateFlag('has_submitted_jd_inputs', true);
 
-      let jdInput: JDInput;
       let processingMessage: Message;
+      let inputType: 'brief' | 'link';
+      let processedInput: string;
 
-      if (isValidUrl(userInput.trim())) {
-        // Website URL provided
-        jdInput = {
-          inputType: 'website',
-          websiteUrl: userInput.trim(),
-          rawInput: userInput
-        };
-
+      if (isValidJDUrl(userInput.trim())) {
+        // URL provided
+        inputType = 'link';
+        processedInput = userInput.trim();
+        
         processingMessage = {
           id: (Date.now() + 1).toString(),
-          content: `🌐 Perfect! I'm analyzing the website: ${extractDomain(userInput.trim())}\n\nI'll extract the organization's mission and context to create a tailored job description...`,
+          content: `🔗 Perfect! I'm fetching the job posting from: ${extractJDDomain(processedInput)}\n\nI'll analyze it and create an improved version with better clarity, DEI language, and nonprofit alignment...`,
           sender: 'assistant',
           timestamp: new Date(),
         };
       } else {
-        // Manual input provided
-        const validation = validateManualInput(userInput);
+        // Brief text provided
+        const validation = validateBriefInput(userInput);
         
         if (!validation.isValid) {
           // Ask for more information
           const clarificationMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `I need a bit more information to create a great job description. Please provide:\n\n${validation.missingFields.map(field => `• ${field}`).join('\n')}\n\nFor example: "Looking for a Gender Expert for our Livelihoods project. Need 3+ years experience in M&E, grants management, and team supervision."`,
+            content: `${validation.reason}\n\nFor example: "We need a field coordinator for a migration project in Kenya. Looking for someone with 3+ years experience in humanitarian response, M&E, and team management."`,
             sender: 'assistant',
             timestamp: new Date(),
             type: 'jd-request'
@@ -206,20 +207,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           return;
         }
 
-        const parsed = parseManualInput(userInput);
-        jdInput = {
-          inputType: 'manual',
-          roleTitle: parsed.roleTitle,
-          sector: parsed.sector,
-          experienceYears: parsed.experienceYears,
-          requiredSkills: parsed.requiredSkills,
-          additionalDetails: parsed.additionalDetails,
-          rawInput: userInput
-        };
-
+        inputType = 'brief';
+        processedInput = userInput;
+        
         processingMessage = {
           id: (Date.now() + 1).toString(),
-          content: `✅ Great! I have all the details I need:\n\n${jdInput.roleTitle ? `• Role: ${jdInput.roleTitle}` : ''}${jdInput.sector ? `\n• Sector: ${jdInput.sector}` : ''}${jdInput.experienceYears ? `\n• Experience: ${jdInput.experienceYears}` : ''}${jdInput.requiredSkills ? `\n• Skills: ${jdInput.requiredSkills}` : ''}\n\n🤖 Now generating your professional job description...`,
+          content: `✅ Great! I have all the details I need from your brief.\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
           sender: 'assistant',
           timestamp: new Date(),
         };
@@ -227,8 +220,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Save input to database
-      const savedDraft = await saveJDInput(profile.id, jdInput);
+      // Process the input using the service
+      const savedDraft = await processJDInput(profile.id, inputType, processedInput);
       if (!savedDraft) {
         throw new Error('Failed to save JD input');
       }
@@ -264,7 +257,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Show error message
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: `❌ Sorry, I encountered an error while generating your job description. Please try again or contact support if the issue persists.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -461,6 +454,76 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check if we're in JD mode and this is a supported file type
+    if (awaitingJDInput) {
+      const allowedTypes = ['doc', 'docx', 'pdf'];
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension && allowedTypes.includes(fileExtension)) {
+        // Process as JD file upload
+        setIsProcessingJD(true);
+        setAwaitingJDInput(false);
+
+        try {
+          await updateFlag('has_submitted_jd_inputs', true);
+
+          const processingMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, processingMessage]);
+
+          // Process the file upload
+          const savedDraft = await processJDInput(profile.id, 'upload', file);
+          if (!savedDraft) {
+            throw new Error('Failed to save uploaded file');
+          }
+
+          // Generate improved JD
+          const generatedJD = await generateJDFromInput(savedDraft);
+          await updateFlag('has_generated_jd', true);
+
+          // Create final message with improved job description
+          const jobMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: generatedJD,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'job-description',
+            metadata: {
+              jdDraftId: savedDraft.id,
+            }
+          };
+
+          // Replace processing message with final result
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? jobMessage : msg
+          ));
+
+        } catch (error) {
+          console.error('❌ Error processing JD file upload:', error);
+          
+          const errorMessage: Message = {
+            id: (Date.now() + 3).toString(),
+            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, errorMessage]);
+        } finally {
+          setIsProcessingJD(false);
+        }
+
+        e.target.value = '';
+        return;
+      }
+    }
+
+    // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
     
@@ -523,7 +586,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Send the smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's create your job description! You can either:\n\n• **Share your org/project website** (I'll analyze it to understand your mission)\n• **Or give me key details like:**\n  - Role (e.g., Gender Expert)\n  - Sector or project type (e.g., Livelihoods)\n  - Years of experience required\n  - Required skills (e.g., M&E, grants, supervision)\n\nJust paste a website URL or describe the role details, and I'll create a professional, mission-aligned job description for you! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -698,6 +761,20 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             </span>
                           </div>
                         )}
+
+                        {/* JD Request indicators */}
+                        {message.type === 'jd-request' && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <div className="flex space-x-1">
+                              <FileText className="w-3 h-3" style={{ color: '#10B981' }} />
+                              <Paperclip className="w-3 h-3" style={{ color: '#10B981' }} />
+                              <Link className="w-3 h-3" style={{ color: '#10B981' }} />
+                            </div>
+                            <span className="text-xs font-medium" style={{ color: '#10B981' }}>
+                              Brief • Upload • Link
+                            </span>
+                          </div>
+                        )}
                       </motion.div>
                       
                       {/* Job Action Buttons */}
@@ -791,7 +868,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.json"
+            accept={awaitingJDInput ? ".doc,.docx,.pdf" : ".pdf,.docx,.txt,.json"}
             onChange={handleFileChange}
             className="hidden"
           />
@@ -816,7 +893,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share a website URL or describe the role details..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -863,7 +940,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    Attach files (.pdf, .docx, .txt, .json)
+                    {awaitingJDInput ? 'Upload JD file (.doc, .docx, .pdf)' : 'Attach files (.pdf, .docx, .txt, .json)'}
                   </TooltipContent>
                 </Tooltip>
 
@@ -916,7 +993,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide job details or website URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>

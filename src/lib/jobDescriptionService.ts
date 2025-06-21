@@ -1,30 +1,26 @@
-// Job Description Service - Handles JD generation workflow
+// Job Description Service - Complete implementation with multiple input modes
 import { supabase } from './supabase';
 import { generateJobDescription } from './ai';
 import { toast } from 'sonner';
 
 export interface JDInput {
-  inputType: 'website' | 'manual';
-  websiteUrl?: string;
-  roleTitle?: string;
-  sector?: string;
-  experienceYears?: string;
-  requiredSkills?: string;
-  additionalDetails?: string;
-  rawInput: string;
+  inputType: 'brief' | 'upload' | 'link';
+  inputSummary: string;
+  content?: string;
+  fileName?: string;
+  fileType?: string;
+  url?: string;
 }
 
 export interface JDDraft {
   id: string;
   user_id: string;
-  input_type: 'website' | 'manual';
-  website_url?: string;
-  role_title?: string;
-  sector?: string;
-  experience_years?: string;
-  required_skills?: string;
-  additional_details?: string;
-  raw_input: string;
+  input_type: 'brief' | 'upload' | 'link';
+  input_summary: string;
+  content?: string;
+  file_name?: string;
+  file_type?: string;
+  url?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   generated_jd?: string;
   error_message?: string;
@@ -42,108 +38,121 @@ export function isValidUrl(input: string): boolean {
   }
 }
 
-// Parse manual input to extract structured data
-export function parseManualInput(input: string): Partial<JDInput> {
-  const lowerInput = input.toLowerCase();
-  const parsed: Partial<JDInput> = {};
-
-  // Extract role title (look for common patterns)
-  const rolePatterns = [
-    /role[:\s]+([^,\n]+)/i,
-    /position[:\s]+([^,\n]+)/i,
-    /job[:\s]+([^,\n]+)/i,
-    /title[:\s]+([^,\n]+)/i,
-    /looking for[:\s]+([^,\n]+)/i,
-    /hiring[:\s]+([^,\n]+)/i
-  ];
-
-  for (const pattern of rolePatterns) {
-    const match = input.match(pattern);
-    if (match && match[1]) {
-      parsed.roleTitle = match[1].trim();
-      break;
-    }
+// Extract domain from URL for display
+export function extractDomain(url: string): string {
+  try {
+    const domain = new URL(url).hostname;
+    return domain.replace('www.', '');
+  } catch {
+    return url;
   }
-
-  // Extract sector/project type
-  const sectorPatterns = [
-    /sector[:\s]+([^,\n]+)/i,
-    /project[:\s]+([^,\n]+)/i,
-    /field[:\s]+([^,\n]+)/i,
-    /area[:\s]+([^,\n]+)/i,
-    /domain[:\s]+([^,\n]+)/i
-  ];
-
-  for (const pattern of sectorPatterns) {
-    const match = input.match(pattern);
-    if (match && match[1]) {
-      parsed.sector = match[1].trim();
-      break;
-    }
-  }
-
-  // Extract experience years
-  const expPatterns = [
-    /(\d+)[\s-]*(?:years?|yrs?)[:\s]*(?:of\s+)?experience/i,
-    /experience[:\s]+(\d+)[\s-]*(?:years?|yrs?)/i,
-    /(\d+)\+?\s*(?:years?|yrs?)/i
-  ];
-
-  for (const pattern of expPatterns) {
-    const match = input.match(pattern);
-    if (match && match[1]) {
-      parsed.experienceYears = `${match[1]} years`;
-      break;
-    }
-  }
-
-  // Extract skills (look for common skill-related keywords)
-  const skillsPatterns = [
-    /skills?[:\s]+([^.]+)/i,
-    /requirements?[:\s]+([^.]+)/i,
-    /qualifications?[:\s]+([^.]+)/i,
-    /expertise[:\s]+([^.]+)/i,
-    /competencies[:\s]+([^.]+)/i
-  ];
-
-  for (const pattern of skillsPatterns) {
-    const match = input.match(pattern);
-    if (match && match[1]) {
-      parsed.requiredSkills = match[1].trim();
-      break;
-    }
-  }
-
-  return parsed;
 }
 
-// Validate if manual input is sufficient for JD generation
-export function validateManualInput(input: string): { isValid: boolean; missingFields: string[] } {
-  const parsed = parseManualInput(input);
-  const missingFields: string[] = [];
-
-  // Check minimum requirements
-  if (!parsed.roleTitle && !input.toLowerCase().includes('role') && !input.toLowerCase().includes('position')) {
-    missingFields.push('role/position title');
+// Validate brief input (typed text)
+export function validateBriefInput(input: string): { isValid: boolean; reason?: string } {
+  const trimmed = input.trim();
+  const wordCount = trimmed.split(/\s+/).filter(word => word.length > 0).length;
+  
+  if (trimmed.length < 30) {
+    return { isValid: false, reason: 'Please provide at least 30 characters of detail' };
   }
-
-  // Input should be at least 20 characters and contain some meaningful content
-  if (input.trim().length < 20) {
-    missingFields.push('more detailed information');
+  
+  if (wordCount < 6) {
+    return { isValid: false, reason: 'Please provide at least 6 words describing the role' };
   }
-
-  // Check if it contains at least some job-related keywords
-  const jobKeywords = ['role', 'position', 'job', 'experience', 'skills', 'sector', 'project', 'responsibilities', 'qualifications'];
-  const hasJobKeywords = jobKeywords.some(keyword => input.toLowerCase().includes(keyword));
+  
+  // Check for job-related keywords
+  const jobKeywords = ['role', 'position', 'job', 'coordinator', 'manager', 'expert', 'officer', 'specialist', 'director', 'assistant'];
+  const hasJobKeywords = jobKeywords.some(keyword => trimmed.toLowerCase().includes(keyword));
   
   if (!hasJobKeywords) {
-    missingFields.push('job-related details (role, skills, experience, etc.)');
+    return { isValid: false, reason: 'Please include role or position details' };
   }
+  
+  return { isValid: true };
+}
 
-  return {
-    isValid: missingFields.length === 0,
-    missingFields
-  };
+// Validate file upload
+export function validateFileUpload(file: File): { isValid: boolean; reason?: string } {
+  const allowedTypes = ['doc', 'docx', 'pdf'];
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  
+  if (!fileExtension || !allowedTypes.includes(fileExtension)) {
+    return { 
+      isValid: false, 
+      reason: `Only ${allowedTypes.join(', ')} files are supported` 
+    };
+  }
+  
+  // Check file size (max 10MB)
+  if (file.size > 10 * 1024 * 1024) {
+    return { isValid: false, reason: 'File size must be less than 10MB' };
+  }
+  
+  return { isValid: true };
+}
+
+// Extract text content from uploaded file
+export async function extractFileContent(file: File): Promise<string> {
+  console.log('📄 Extracting content from file:', file.name);
+  
+  try {
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
+    if (fileExtension === 'pdf') {
+      // For PDF files, we'll use a simple text extraction
+      // In a production environment, you'd use a proper PDF parser
+      const text = await file.text();
+      return text.substring(0, 5000); // Limit to first 5000 characters
+    } else if (fileExtension === 'doc' || fileExtension === 'docx') {
+      // For Word documents, we'll treat them as text for now
+      // In production, you'd use a proper Word document parser
+      const text = await file.text();
+      return text.substring(0, 5000); // Limit to first 5000 characters
+    } else {
+      // Fallback to text extraction
+      const text = await file.text();
+      return text.substring(0, 5000);
+    }
+  } catch (error) {
+    console.error('❌ Error extracting file content:', error);
+    throw new Error('Failed to extract content from file');
+  }
+}
+
+// Fetch content from URL
+export async function fetchUrlContent(url: string): Promise<string> {
+  console.log('🌐 Fetching content from URL:', url);
+  
+  try {
+    // Use a CORS proxy service to fetch the website content
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const html = data.contents;
+    
+    // Create a temporary DOM element to parse HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Extract title
+    const title = doc.querySelector('title')?.textContent || 'Job Posting';
+    
+    // Extract main content (first 1000 words)
+    const bodyText = doc.body?.textContent || '';
+    const words = bodyText.replace(/\s+/g, ' ').trim().split(' ');
+    const content = words.slice(0, 1000).join(' ');
+    
+    return `Title: ${title}\n\nContent: ${content}`;
+  } catch (error) {
+    console.error('❌ Error fetching URL content:', error);
+    throw new Error('Failed to fetch content from URL');
+  }
 }
 
 // Save JD input to database
@@ -156,13 +165,11 @@ export async function saveJDInput(userId: string, input: JDInput): Promise<JDDra
       .insert({
         user_id: userId,
         input_type: input.inputType,
-        website_url: input.websiteUrl,
-        role_title: input.roleTitle,
-        sector: input.sector,
-        experience_years: input.experienceYears,
-        required_skills: input.requiredSkills,
-        additional_details: input.additionalDetails,
-        raw_input: input.rawInput,
+        input_summary: input.inputSummary,
+        content: input.content,
+        file_name: input.fileName,
+        file_type: input.fileType,
+        url: input.url,
         status: 'pending'
       })
       .select()
@@ -229,40 +236,61 @@ export async function generateJDFromInput(draft: JDDraft): Promise<string> {
   try {
     let prompt = '';
 
-    if (draft.input_type === 'website' && draft.website_url) {
-      // For website input, use the existing website scraping logic
-      const { scrapeWebsite } = await import('./jobBuilder');
-      const websiteContent = await scrapeWebsite(draft.website_url);
-      
-      prompt = `Based on this organization's website, create a comprehensive job description:
+    if (draft.input_type === 'brief') {
+      prompt = `Create a comprehensive, professional job description based on this brief:
 
-Organization: ${websiteContent.title}
-Website: ${websiteContent.url}
-Description: ${websiteContent.description}
-Content: ${websiteContent.content}
+"${draft.input_summary}"
 
-Additional context from user: ${draft.raw_input}`;
+Please create a well-structured job description that includes:
+- Job title and organization context
+- Role overview and mission alignment
+- Key responsibilities
+- Required qualifications and experience
+- Skills and competencies
+- Application instructions
+
+Make it suitable for the nonprofit/development sector with inclusive language.`;
+
+    } else if (draft.input_type === 'upload' && draft.content) {
+      prompt = `Please improve and refine this job description draft:
+
+Original file: ${draft.file_name}
+
+Content:
+${draft.content}
+
+Please enhance it by:
+- Improving clarity and structure
+- Adding DEI-friendly language
+- Ensuring nonprofit sector alignment
+- Making it more compelling and professional
+- Adding any missing standard sections`;
+
+    } else if (draft.input_type === 'link' && draft.content) {
+      prompt = `Rewrite this job posting with better clarity, DEI language, and nonprofit alignment:
+
+Source URL: ${draft.url}
+
+Original content:
+${draft.content}
+
+Please create a new version that:
+- Uses clear, inclusive language
+- Follows nonprofit sector best practices
+- Has better structure and flow
+- Is more engaging and professional
+- Includes proper application instructions`;
+
     } else {
-      // For manual input, create a structured prompt
-      prompt = `Create a comprehensive job description based on the following details:
-
-${draft.role_title ? `Role: ${draft.role_title}` : ''}
-${draft.sector ? `Sector/Project: ${draft.sector}` : ''}
-${draft.experience_years ? `Experience Required: ${draft.experience_years}` : ''}
-${draft.required_skills ? `Required Skills: ${draft.required_skills}` : ''}
-${draft.additional_details ? `Additional Details: ${draft.additional_details}` : ''}
-
-Original user input: ${draft.raw_input}
-
-Please create a professional, mission-aligned job description suitable for the nonprofit/development sector.`;
+      throw new Error('Invalid draft data for JD generation');
     }
 
     // Use the AI service to generate the job description
     const generatedJD = await generateJobDescription({
-      title: draft.role_title || 'Position',
-      description: draft.sector || '',
+      title: draft.input_summary,
+      description: draft.input_summary,
       content: prompt,
-      url: draft.website_url || ''
+      url: draft.url || ''
     });
 
     // Update draft with generated JD
@@ -275,6 +303,70 @@ Please create a professional, mission-aligned job description suitable for the n
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     
     await updateJDDraftStatus(draft.id, 'failed', undefined, errorMessage);
+    throw error;
+  }
+}
+
+// Process different input types
+export async function processJDInput(
+  userId: string, 
+  inputType: 'brief' | 'upload' | 'link',
+  input: string | File
+): Promise<JDDraft | null> {
+  try {
+    let jdInput: JDInput;
+
+    if (inputType === 'brief' && typeof input === 'string') {
+      const validation = validateBriefInput(input);
+      if (!validation.isValid) {
+        throw new Error(validation.reason);
+      }
+
+      jdInput = {
+        inputType: 'brief',
+        inputSummary: input.substring(0, 500), // Limit summary length
+      };
+
+    } else if (inputType === 'upload' && input instanceof File) {
+      const validation = validateFileUpload(input);
+      if (!validation.isValid) {
+        throw new Error(validation.reason);
+      }
+
+      const content = await extractFileContent(input);
+      const fileExtension = input.name.split('.').pop()?.toLowerCase();
+
+      jdInput = {
+        inputType: 'upload',
+        inputSummary: `Uploaded file: ${input.name}`,
+        content,
+        fileName: input.name,
+        fileType: fileExtension,
+      };
+
+    } else if (inputType === 'link' && typeof input === 'string') {
+      if (!isValidUrl(input)) {
+        throw new Error('Please provide a valid URL');
+      }
+
+      const content = await fetchUrlContent(input);
+
+      jdInput = {
+        inputType: 'link',
+        inputSummary: `Job posting from: ${extractDomain(input)}`,
+        content,
+        url: input,
+      };
+
+    } else {
+      throw new Error('Invalid input type or data');
+    }
+
+    // Save to database
+    return await saveJDInput(userId, jdInput);
+
+  } catch (error) {
+    console.error('❌ Error processing JD input:', error);
     throw error;
   }
 }
