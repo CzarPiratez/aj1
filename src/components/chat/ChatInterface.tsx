@@ -27,7 +27,10 @@ import {
   classifyJDInput,
   extractUrlFromInput,
   extractBriefFromInput,
-  refineUploadedJD
+  refineUploadedJD,
+  generateJDFromBrief,
+  generateJDFromBriefAndLink,
+  rewriteJDFromURL
 } from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse } from '@/lib/ai';
@@ -131,6 +134,89 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
+  // Helper function to save JD input to database
+  const saveJDInputToDatabase = async (inputType: string, inputSummary: string, content?: string, url?: string, fileName?: string, fileType?: string) => {
+    if (!profile?.id) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('jd_drafts')
+        .insert({
+          user_id: profile.id,
+          input_type: inputType,
+          input_summary: inputSummary,
+          content: content,
+          url: url,
+          file_name: fileName,
+          file_type: fileType,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving JD input:', error);
+        return null;
+      }
+
+      console.log('✅ JD input saved to database:', data.id);
+      return data;
+    } catch (error) {
+      console.error('❌ Error in saveJDInputToDatabase:', error);
+      return null;
+    }
+  };
+
+  // Helper function to update JD draft status
+  const updateJDDraftStatus = async (draftId: string, status: string, generatedJD?: string, errorMessage?: string) => {
+    try {
+      const updateData: any = { status };
+      
+      if (generatedJD) {
+        updateData.generated_jd = generatedJD;
+      }
+      
+      if (errorMessage) {
+        updateData.error_message = errorMessage;
+      }
+
+      const { error } = await supabase
+        .from('jd_drafts')
+        .update(updateData)
+        .eq('id', draftId);
+
+      if (error) {
+        console.error('❌ Error updating JD draft status:', error);
+        return false;
+      }
+
+      console.log(`✅ JD draft ${draftId} status updated to: ${status}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error in updateJDDraftStatus:', error);
+      return false;
+    }
+  };
+
+  // Helper function to extract file content
+  const extractFileContent = async (file: File): Promise<string> => {
+    try {
+      const text = await file.text();
+      return text.substring(0, 5000); // Limit to first 5000 characters
+    } catch (error) {
+      throw new Error('Failed to extract content from file');
+    }
+  };
+
+  // Validate file upload for JD processing
+  const isValidJDFile = (file: File): boolean => {
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    const allowedExtensions = ['pdf', 'doc', 'docx', 'txt'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    
+    return allowedTypes.includes(file.type) || (fileExtension && allowedExtensions.includes(fileExtension));
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -202,6 +288,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setAwaitingJDInput(false);
 
     try {
+      // Update progress flag for input submission
+      await updateFlag('has_submitted_jd_inputs', true);
+
       // Classify the input type
       const inputType = classifyJDInput(userInput);
       console.log('🔍 Input classified as:', inputType);
@@ -228,13 +317,28 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         }
       }
 
+      // Save input to database
+      let savedDraft = null;
+      const url = extractUrlFromInput(userInput);
+      const brief = extractBriefFromInput(userInput);
+      
+      switch (inputType) {
+        case 'brief_with_link':
+          savedDraft = await saveJDInputToDatabase('brief_with_link', userInput.substring(0, 500), userInput, url);
+          break;
+        case 'link_only':
+          savedDraft = await saveJDInputToDatabase('link_only', `Job posting from: ${url}`, userInput, url);
+          break;
+        case 'brief_only':
+          savedDraft = await saveJDInputToDatabase('brief_only', userInput.substring(0, 500), userInput);
+          break;
+      }
+
       // Show appropriate processing message based on input type
       let processingMessage: Message;
       
       switch (inputType) {
         case 'brief_with_link':
-          const url = extractUrlFromInput(userInput);
-          const brief = extractBriefFromInput(userInput);
           processingMessage = {
             id: (Date.now() + 1).toString(),
             content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${url}\n🤖 Generating a mission-aligned job description with DeepSeek Chat V3...`,
@@ -244,10 +348,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           break;
           
         case 'link_only':
-          const linkUrl = extractUrlFromInput(userInput);
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `🔗 Great! I'll fetch the existing job posting from: ${linkUrl}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
+            content: `🔗 Great! I'll fetch the existing job posting from: ${url}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -268,69 +371,114 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Use the enhanced generateInitialJD function
-      const result = await generateInitialJD(userInput, profile.id);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to generate job description');
+      // Update draft status to processing
+      if (savedDraft) {
+        await updateJDDraftStatus(savedDraft.id, 'processing');
       }
 
-      // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(result.generatedJD!);
-
-      // Create final message with job description
-      const jobMessage: Message = {
-        id: (Date.now() + 2).toString(),
-        content: result.generatedJD!,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'job-description',
-        metadata: {
-          jdDraftId: result.jdDraft!.id,
-          jobData: parsedJobData,
+      // Generate JD using appropriate method based on input type
+      let generatedJD: string;
+      
+      try {
+        switch (inputType) {
+          case 'brief_with_link':
+            generatedJD = await generateJDFromBriefAndLink(userInput);
+            break;
+          case 'link_only':
+            if (!url) throw new Error('No URL found in input');
+            generatedJD = await rewriteJDFromURL(url);
+            break;
+          case 'brief_only':
+            generatedJD = await generateJDFromBrief(userInput);
+            break;
+          default:
+            throw new Error('Unknown input type');
         }
-      };
 
-      // Replace processing message with final result
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id ? jobMessage : msg
-      ));
+        // Update draft with generated JD
+        if (savedDraft) {
+          await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
+        }
 
-      // Show success message
-      const successMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: "🎉 Here's your job description! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
+        // Parse the generated JD into structured data
+        const parsedJobData = parseJobDescription(generatedJD);
 
-      setMessages(prev => [...prev, successMessage]);
+        // Update progress flag
+        await updateFlag('has_generated_jd', true);
 
-      // Show the structured JD in the right panel
-      onContentChange({
-        type: 'job-description',
-        title: 'Generated Job Description',
-        content: 'AI-generated job description ready for review',
-        data: parsedJobData,
-        draftId: result.jdDraft!.id
-      });
+        // Create final message with job description
+        const jobMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          content: generatedJD,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'job-description',
+          metadata: {
+            jdDraftId: savedDraft?.id,
+            jobData: parsedJobData,
+          }
+        };
 
-      console.log('✅ JD generation completed successfully');
+        // Replace processing message with final result
+        setMessages(prev => prev.map(msg => 
+          msg.id === processingMessage.id ? jobMessage : msg
+        ));
+
+        // Show success message
+        const successMessage: Message = {
+          id: (Date.now() + 3).toString(),
+          content: "🎉 Here's your job description! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'progress'
+        };
+
+        setMessages(prev => [...prev, successMessage]);
+
+        // Show the structured JD in the right panel
+        onContentChange({
+          type: 'job-description',
+          title: 'Generated Job Description',
+          content: 'AI-generated job description ready for review',
+          data: parsedJobData,
+          draftId: savedDraft?.id
+        });
+
+        console.log('✅ JD generation completed successfully');
+
+      } catch (aiError: any) {
+        console.error('❌ AI generation failed:', aiError);
+        
+        // Update draft with error
+        if (savedDraft) {
+          await updateJDDraftStatus(savedDraft.id, 'failed', undefined, aiError.message);
+        }
+
+        // Show error message with retry option
+        const errorMessage: Message = {
+          id: (Date.now() + 3).toString(),
+          content: `❌ ${aiError instanceof Error ? aiError.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'retry-option',
+          metadata: {
+            canRetry: true,
+            retryDraftId: savedDraft?.id
+          }
+        };
+
+        setMessages(prev => [...prev, errorMessage]);
+      }
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
-      // Show error message with retry option
+      // Show error message
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: `❌ ${error instanceof Error ? error.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
+        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
         sender: 'assistant',
         timestamp: new Date(),
-        type: 'retry-option',
-        metadata: {
-          canRetry: true
-        }
       };
 
       setMessages(prev => [...prev, errorMessage]);
@@ -434,15 +582,14 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
     // Check if we're in JD mode and this is a supported file type
     if (awaitingJDInput) {
-      const allowedTypes = ['doc', 'docx', 'pdf', 'txt'];
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension && allowedTypes.includes(fileExtension)) {
+      if (isValidJDFile(file)) {
         // Process as JD file upload
         setIsProcessingJD(true);
         setAwaitingJDInput(false);
 
         try {
+          await updateFlag('has_submitted_jd_inputs', true);
+
           const processingMessage: Message = {
             id: (Date.now() + 1).toString(),
             content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
@@ -454,12 +601,34 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
           // Extract file content
           const fileContent = await extractFileContent(file);
+          const fileExtension = file.name.split('.').pop()?.toLowerCase();
+
+          // Save to database
+          const savedDraft = await saveJDInputToDatabase(
+            'upload', 
+            `Uploaded file: ${file.name}`, 
+            fileContent, 
+            undefined, 
+            file.name, 
+            fileExtension
+          );
+
+          if (savedDraft) {
+            await updateJDDraftStatus(savedDraft.id, 'processing');
+          }
 
           // Use refineUploadedJD function
           const generatedJD = await refineUploadedJD(fileContent, file.name);
 
+          // Update draft with generated JD
+          if (savedDraft) {
+            await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
+          }
+
           // Parse the generated JD into structured data
           const parsedJobData = parseJobDescription(generatedJD);
+          
+          await updateFlag('has_generated_jd', true);
 
           // Create final message with improved job description
           const jobMessage: Message = {
@@ -469,6 +638,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             timestamp: new Date(),
             type: 'job-description',
             metadata: {
+              jdDraftId: savedDraft?.id,
               jobData: parsedJobData,
             }
           };
@@ -483,7 +653,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             type: 'job-description',
             title: 'Refined Job Description',
             content: 'AI-refined job description ready for review',
-            data: parsedJobData
+            data: parsedJobData,
+            draftId: savedDraft?.id
           });
 
         } catch (error) {
@@ -491,7 +662,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           
           const errorMessage: Message = {
             id: (Date.now() + 3).toString(),
-            content: `❌ ${error instanceof Error ? error.message : 'Sorry, I couldn\'t process that file. Please try again or use a different format.'}`,
+            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -501,6 +672,17 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           setIsProcessingJD(false);
         }
 
+        e.target.value = '';
+        return;
+      } else {
+        // Invalid file type for JD processing
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          content: 'For job description files, please upload PDF, Word (.doc/.docx), or text files only.',
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
         e.target.value = '';
         return;
       }
@@ -547,16 +729,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
 
     e.target.value = '';
-  };
-
-  // Helper function to extract file content
-  const extractFileContent = async (file: File): Promise<string> => {
-    try {
-      const text = await file.text();
-      return text.substring(0, 5000); // Limit to first 5000 characters
-    } catch (error) {
-      throw new Error('Failed to extract content from file');
-    }
   };
 
   const generateSimpleResponse = (userInput: string): string => {
