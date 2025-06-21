@@ -9,7 +9,8 @@ import {
   Globe,
   Loader2,
   FileText,
-  Link
+  Link,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { processJDGeneration } from '@/lib/jobDescriptionGenerator';
+import { generateInitialJD, retryJDGeneration, checkJDGenerationStatus } from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
@@ -30,13 +31,15 @@ interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request';
+  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option';
   metadata?: {
     websiteContent?: any;
     jobId?: string;
     jdDraftId?: string;
     isJDRequest?: boolean;
     jobData?: any;
+    canRetry?: boolean;
+    retryDraftId?: string;
   };
 }
 
@@ -86,6 +89,40 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   }, [input]);
 
+  // Check for failed JD generation on component mount
+  useEffect(() => {
+    if (profile?.id) {
+      checkForFailedJDGeneration();
+    }
+  }, [profile?.id]);
+
+  const checkForFailedJDGeneration = async () => {
+    if (!profile?.id) return;
+
+    try {
+      const status = await checkJDGenerationStatus(profile.id);
+      
+      if (status.hasFailed && status.latestDraft) {
+        // Show retry option
+        const retryMessage: Message = {
+          id: `retry-${Date.now()}`,
+          content: "I noticed your previous job description generation didn't complete successfully. Would you like me to try again with your previous input?",
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'retry-option',
+          metadata: {
+            canRetry: true,
+            retryDraftId: status.latestDraft.id
+          }
+        };
+
+        setMessages(prev => [...prev, retryMessage]);
+      }
+    } catch (error) {
+      console.error('Error checking JD generation status:', error);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -104,6 +141,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     if (awaitingJDInput) {
       await handleJDInputResponse(currentInput);
       return;
+    }
+
+    // Check for retry request
+    if (currentInput.toLowerCase().includes('try again') || currentInput.toLowerCase().includes('retry')) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.type === 'retry-option' && lastMessage.metadata?.retryDraftId) {
+        await handleJDRetry(lastMessage.metadata.retryDraftId);
+        return;
+      }
     }
 
     setIsTyping(true);
@@ -148,43 +194,24 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setAwaitingJDInput(false);
 
     try {
-      let inputType: 'brief' | 'upload' | 'link';
-      let processedInput = userInput.trim();
-
-      // Determine input type
-      if (isValidUrl(processedInput)) {
-        inputType = 'link';
-      } else {
-        inputType = 'brief';
-      }
-
       const processingMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: inputType === 'link' 
-          ? `🔗 Perfect! I'm fetching the job posting from: ${new URL(processedInput).hostname}\n\nI'll analyze it and create an improved version with better clarity, DEI language, and nonprofit alignment...`
-          : `✅ Great! I have all the details I need from your brief.\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
+        content: `✅ Perfect! I'm now generating a comprehensive job description using DeepSeek Chat V3...\n\n🤖 Creating a professional, mission-aligned JD that's ready for posting...`,
         sender: 'assistant',
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Process the input using the enhanced service
-      const result = await processJDGeneration(
-        profile.id,
-        inputType,
-        processedInput
-      );
+      // Use the new generateInitialJD function
+      const result = await generateInitialJD(userInput, profile.id);
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to process JD input');
+        throw new Error(result.error || 'Failed to generate job description');
       }
 
       // Parse the generated JD into structured data
       const parsedJobData = parseJobDescription(result.generatedJD!);
-
-      // Update progress flag
-      await updateFlag('has_generated_jd', true);
 
       // Create final message with job description
       const jobMessage: Message = {
@@ -194,7 +221,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         timestamp: new Date(),
         type: 'job-description',
         metadata: {
-          jdDraftId: result.draft!.id,
+          jdDraftId: result.jdDraft!.id,
           jobData: parsedJobData,
         }
       };
@@ -204,13 +231,24 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         msg.id === processingMessage.id ? jobMessage : msg
       ));
 
+      // Show success message
+      const successMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: "🎉 Here's your first draft! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'progress'
+      };
+
+      setMessages(prev => [...prev, successMessage]);
+
       // Show the structured JD in the right panel
       onContentChange({
         type: 'job-description',
         title: 'Generated Job Description',
         content: 'AI-generated job description ready for review',
         data: parsedJobData,
-        draftId: result.draft!.id
+        draftId: result.jdDraft!.id
       });
 
       console.log('✅ JD generation completed successfully');
@@ -218,10 +256,99 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
-      // Show error message
+      // Show error message with retry option
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: `❌ ${error instanceof Error ? error.message : 'Sorry, I encountered an error while processing your input. Please try again.'}`,
+        content: `❌ ${error instanceof Error ? error.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'retry-option',
+        metadata: {
+          canRetry: true
+        }
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessingJD(false);
+    }
+  };
+
+  const handleJDRetry = async (draftId?: string) => {
+    if (!profile?.id) return;
+
+    setIsProcessingJD(true);
+
+    try {
+      const processingMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `🔄 Retrying job description generation with DeepSeek Chat V3...\n\n🤖 Generating your professional JD...`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, processingMessage]);
+
+      let result;
+      if (draftId) {
+        // Retry specific draft
+        result = await retryJDGeneration(draftId, profile.id);
+      } else {
+        // This shouldn't happen, but handle gracefully
+        throw new Error('No draft ID provided for retry');
+      }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Retry failed');
+      }
+
+      // Parse the generated JD into structured data
+      const parsedJobData = parseJobDescription(result.generatedJD!);
+
+      // Create final message with job description
+      const jobMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: result.generatedJD!,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'job-description',
+        metadata: {
+          jdDraftId: draftId,
+          jobData: parsedJobData,
+        }
+      };
+
+      // Replace processing message with final result
+      setMessages(prev => prev.map(msg => 
+        msg.id === processingMessage.id ? jobMessage : msg
+      ));
+
+      // Show success message
+      const successMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: "🎉 Success! Here's your job description. You can now refine, update tone, or view SDG alignment.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'progress'
+      };
+
+      setMessages(prev => [...prev, successMessage]);
+
+      // Show the structured JD in the right panel
+      onContentChange({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        draftId: draftId
+      });
+
+    } catch (error) {
+      console.error('❌ Error retrying JD generation:', error);
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: `❌ ${error instanceof Error ? error.message : 'Sorry, the retry also failed. Please try again in a few minutes.'}`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -263,14 +390,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           // Extract file content
           const fileContent = await extractFileContent(file);
 
-          // Process the file upload
-          const result = await processJDGeneration(
-            profile.id,
-            'upload',
-            fileContent,
-            file.name,
-            fileExtension
-          );
+          // Use generateInitialJD with file content
+          const result = await generateInitialJD(fileContent, profile.id);
 
           if (!result.success) {
             throw new Error(result.error || 'Failed to process uploaded file');
@@ -278,8 +399,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
           // Parse the generated JD into structured data
           const parsedJobData = parseJobDescription(result.generatedJD!);
-          
-          await updateFlag('has_generated_jd', true);
 
           // Create final message with improved job description
           const jobMessage: Message = {
@@ -289,7 +408,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             timestamp: new Date(),
             type: 'job-description',
             metadata: {
-              jdDraftId: result.draft!.id,
+              jdDraftId: result.jdDraft!.id,
               jobData: parsedJobData,
             }
           };
@@ -305,7 +424,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             title: 'Generated Job Description',
             content: 'AI-generated job description ready for review',
             data: parsedJobData,
-            draftId: result.draft!.id
+            draftId: result.jdDraft!.id
           });
 
         } catch (error) {
@@ -378,16 +497,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return text.substring(0, 5000); // Limit to first 5000 characters
     } catch (error) {
       throw new Error('Failed to extract content from file');
-    }
-  };
-
-  // Helper function to validate URL
-  const isValidUrl = (string: string): boolean => {
-    try {
-      new URL(string);
-      return true;
-    } catch {
-      return false;
     }
   };
 
@@ -664,24 +773,28 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           message.type === 'suggestion' ? 'border-l-4' : ''
                         } ${
                           message.type === 'jd-request' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'retry-option' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
-                                         message.type === 'jd-request' ? '#E8F5E8' : '#F1EFEC',
+                                         message.type === 'jd-request' ? '#E8F5E8' : 
+                                         message.type === 'retry-option' ? '#FEF3CD' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
-                                          message.type === 'jd-request' ? '#10B981' : 'transparent'
+                                          message.type === 'jd-request' ? '#10B981' : 
+                                          message.type === 'retry-option' ? '#F59E0B' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                         
                         {/* Processing indicators */}
-                        {isProcessingJD && message.content.includes('analyzing') && (
+                        {isProcessingJD && message.content.includes('generating') && (
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
-                              Generating JD...
+                              Generating with DeepSeek Chat V3...
                             </span>
                           </div>
                         )}
@@ -696,6 +809,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
                               Brief • Upload • Link
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Retry option indicators */}
+                        {message.type === 'retry-option' && message.metadata?.canRetry && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <RefreshCw className="w-3 h-3" style={{ color: '#F59E0B' }} />
+                            <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>
+                              Retry Available
                             </span>
                           </div>
                         )}
