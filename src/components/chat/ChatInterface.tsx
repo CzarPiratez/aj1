@@ -20,14 +20,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { 
-  generateInitialJD, 
-  retryJDGeneration, 
-  checkJDGenerationStatus,
-  classifyJDInput,
-  extractUrlFromInput,
-  extractBriefFromInput
-} from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
@@ -53,6 +45,309 @@ interface Message {
 interface ChatInterfaceProps {
   onContentChange: (content: any) => void;
   profile?: any;
+}
+
+// Input classification function
+function classifyJDInput(input: string): 'brief_only' | 'brief_plus_link' | 'link_only' | 'unclear' {
+  const urlRegex = /(https?:\/\/[^\s]+)/;
+  const hasLink = urlRegex.test(input);
+  const plainText = input.replace(urlRegex, '').trim();
+  const hasMeaningfulText = plainText.length > 30 && plainText.split(' ').length > 6;
+
+  if (hasLink && hasMeaningfulText) return 'brief_plus_link';
+  if (hasLink && !hasMeaningfulText) return 'link_only';
+  if (!hasLink && hasMeaningfulText) return 'brief_only';
+  return 'unclear';
+}
+
+// Extract URL from input
+function extractUrlFromInput(input: string): string | null {
+  const urlMatch = input.match(/(https?:\/\/[^\s]+)/);
+  return urlMatch ? urlMatch[1] : null;
+}
+
+// Extract brief text (removing URLs)
+function extractBriefFromInput(input: string): string {
+  return input.replace(/(https?:\/\/[^\s]+)/g, '').trim();
+}
+
+// Generate JD functions for different input types
+async function generateJDFromBrief(brief: string): Promise<string> {
+  const { callAI } = await import('@/lib/ai');
+  
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Create a comprehensive, professional job description based on the brief provided.
+
+Generate a complete job description that includes:
+1. Job Title - Clear, specific, and appropriate for the nonprofit sector
+2. Organization Context - Brief background about the type of organization
+3. Role Overview - Mission-aligned summary connecting to social impact
+4. Key Responsibilities - 5-7 specific, actionable responsibilities
+5. Required Qualifications - Essential skills, experience, and education
+6. Preferred Qualifications - Nice-to-have skills and experience
+7. Skills & Competencies - Technical and soft skills needed
+8. Working Conditions - Location, travel requirements, work environment
+9. What We Offer - Benefits, growth opportunities, impact potential
+10. How to Apply - Clear application instructions
+
+Guidelines:
+- Use inclusive, DEI-friendly language throughout
+- Focus on impact and mission alignment
+- Be specific about experience requirements (years, sectors, skills)
+- Include relevant SDG connections where appropriate
+- Use professional but warm tone that attracts purpose-driven candidates
+- Ensure the JD is comprehensive enough to post immediately
+- Make it engaging and inspiring while remaining professional
+
+Format the output as a well-structured job description ready for posting.`;
+
+  const userPrompt = `Please create a comprehensive job description based on this brief:
+
+"${brief}"
+
+Generate a complete, professional job description suitable for the nonprofit/development sector.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], {
+    temperature: 0.7,
+    max_tokens: 4000
+  });
+
+  return response.content;
+}
+
+async function generateJDFromBriefAndLink(input: string): Promise<string> {
+  const { callAI } = await import('@/lib/ai');
+  
+  const brief = extractBriefFromInput(input);
+  const url = extractUrlFromInput(input);
+  
+  if (!url) {
+    throw new Error('No URL found in input');
+  }
+
+  // Fetch organization context from URL
+  let orgContext = '';
+  try {
+    orgContext = await fetchOrganizationContext(url);
+  } catch (error) {
+    console.warn('⚠️ Could not fetch organization context, proceeding with brief only');
+    orgContext = `Organization website: ${url}`;
+  }
+
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Create a comprehensive, professional job description based on the brief and organizational context provided.
+
+Use the organizational context to:
+- Align the role with the organization's mission and values
+- Include relevant sector-specific language and requirements
+- Connect the position to the organization's impact areas
+- Ensure cultural and operational fit
+
+Generate a complete job description that includes all standard sections with mission alignment.
+
+Guidelines:
+- Use inclusive, DEI-friendly language throughout
+- Focus on impact and mission alignment with this specific organization
+- Be specific about experience requirements relevant to their sector
+- Include relevant SDG connections based on their work
+- Use professional but warm tone that attracts purpose-driven candidates
+- Ensure the JD reflects the organization's culture and values
+- Make it engaging and inspiring while remaining professional
+
+Format the output as a well-structured job description ready for posting.`;
+
+  const userPrompt = `Please create a comprehensive job description based on this information:
+
+**Job Brief:**
+"${brief}"
+
+**Organization Context:**
+${orgContext}
+
+Generate a complete, professional job description that aligns with this organization's mission and work.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], {
+    temperature: 0.7,
+    max_tokens: 4000
+  });
+
+  return response.content;
+}
+
+async function generateJDFromJobPostLink(url: string): Promise<string> {
+  const { callAI } = await import('@/lib/ai');
+  
+  // Fetch existing job posting content
+  let existingJD = '';
+  try {
+    existingJD = await fetchJobPostingContent(url);
+  } catch (error) {
+    throw new Error('Could not fetch content from the provided URL. Please check the link and try again.');
+  }
+
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Rewrite and improve the provided job posting with better clarity, DEI language, and nonprofit sector alignment.
+
+Improvements to make:
+- Enhance clarity and readability
+- Use inclusive, DEI-friendly language throughout
+- Improve structure and organization
+- Add mission-aligned language appropriate for nonprofit sector
+- Strengthen impact statements and purpose-driven messaging
+- Ensure professional tone while remaining engaging
+- Add any missing standard sections
+- Remove jargon and make language accessible
+- Include relevant SDG connections where appropriate
+
+Generate a complete, improved job description with all standard sections.
+
+Guidelines:
+- Maintain the core intent and requirements of the original posting
+- Significantly improve language, structure, and appeal
+- Focus on attracting mission-driven candidates
+- Use warm, professional tone appropriate for nonprofit sector
+- Ensure the rewritten JD is ready for immediate posting
+
+Format the output as a well-structured, professional job description.`;
+
+  const userPrompt = `Please rewrite and improve this job posting:
+
+**Source URL:** ${url}
+
+**Original Job Posting:**
+${existingJD}
+
+Create an improved version with better clarity, DEI language, and nonprofit sector alignment.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], {
+    temperature: 0.7,
+    max_tokens: 4000
+  });
+
+  return response.content;
+}
+
+async function generateJDFromUploadedDraft(fileContent: string, fileName: string): Promise<string> {
+  const { callAI } = await import('@/lib/ai');
+  
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Refine and improve the uploaded job description draft with better structure, clarity, and nonprofit sector best practices.
+
+Improvements to make:
+- Enhance overall structure and organization
+- Improve clarity and readability
+- Use inclusive, DEI-friendly language throughout
+- Strengthen mission alignment and impact messaging
+- Add professional polish while maintaining authenticity
+- Ensure all standard sections are present and well-written
+- Remove jargon and improve accessibility
+- Add relevant SDG connections where appropriate
+- Optimize for attracting purpose-driven candidates
+
+Generate a refined job description with all standard sections.
+
+Guidelines:
+- Preserve the original intent and core requirements
+- Significantly improve language, structure, and professional appeal
+- Focus on nonprofit sector best practices
+- Use warm, professional tone that attracts mission-driven talent
+- Ensure the refined JD is ready for immediate posting
+- Maintain any organization-specific details and requirements
+
+Format the output as a polished, professional job description.`;
+
+  const userPrompt = `Please refine and improve this job description draft:
+
+**Original File:** ${fileName}
+
+**Content:**
+${fileContent}
+
+Create a refined, professional version optimized for the nonprofit sector.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], {
+    temperature: 0.6,
+    max_tokens: 4000
+  });
+
+  return response.content;
+}
+
+// Fetch organization context from URL
+async function fetchOrganizationContext(url: string): Promise<string> {
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const html = data.contents;
+    
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    const title = doc.querySelector('title')?.textContent || 'Organization';
+    const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content') || 
+                           doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
+    
+    const bodyText = doc.body?.textContent || '';
+    const words = bodyText.replace(/\s+/g, ' ').trim().split(' ');
+    const content = words.slice(0, 500).join(' ');
+    
+    return `Organization: ${title}\nDescription: ${metaDescription}\nContent: ${content}`;
+  } catch (error) {
+    console.error('Error fetching organization context:', error);
+    throw new Error('Failed to fetch organization information from URL');
+  }
+}
+
+// Fetch job posting content from URL
+async function fetchJobPostingContent(url: string): Promise<string> {
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const html = data.contents;
+    
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    const title = doc.querySelector('title')?.textContent || 'Job Posting';
+    const bodyText = doc.body?.textContent || '';
+    const words = bodyText.replace(/\s+/g, ' ').trim().split(' ');
+    const content = words.slice(0, 1000).join(' ');
+    
+    return `Title: ${title}\n\nContent: ${content}`;
+  } catch (error) {
+    console.error('Error fetching job posting content:', error);
+    throw new Error('Failed to fetch job posting content from URL');
+  }
+}
+
+// Extract file content
+async function extractFileContent(file: File): Promise<string> {
+  try {
+    const text = await file.text();
+    return text.substring(0, 5000); // Limit to first 5000 characters
+  } catch (error) {
+    throw new Error('Failed to extract content from file');
+  }
 }
 
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
@@ -104,40 +399,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     });
   }, []);
 
-  // Check for failed JD generation on component mount
-  useEffect(() => {
-    if (profile?.id) {
-      checkForFailedJDGeneration();
-    }
-  }, [profile?.id]);
-
-  const checkForFailedJDGeneration = async () => {
-    if (!profile?.id) return;
-
-    try {
-      const status = await checkJDGenerationStatus(profile.id);
-      
-      if (status.hasFailed && status.latestDraft) {
-        // Show retry option
-        const retryMessage: Message = {
-          id: `retry-${Date.now()}`,
-          content: "I noticed your previous job description generation didn't complete successfully. Would you like me to try again with your previous input?",
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'retry-option',
-          metadata: {
-            canRetry: true,
-            retryDraftId: status.latestDraft.id
-          }
-        };
-
-        setMessages(prev => [...prev, retryMessage]);
-      }
-    } catch (error) {
-      console.error('Error checking JD generation status:', error);
-    }
-  };
-
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -156,15 +417,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     if (awaitingJDInput) {
       await handleJDInputResponse(currentInput);
       return;
-    }
-
-    // Check for retry request
-    if (currentInput.toLowerCase().includes('try again') || currentInput.toLowerCase().includes('retry')) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.type === 'retry-option' && lastMessage.metadata?.retryDraftId) {
-        await handleJDRetry(lastMessage.metadata.retryDraftId);
-        return;
-      }
     }
 
     setIsTyping(true);
@@ -226,6 +478,55 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       const inputType = classifyJDInput(userInput);
       console.log('🔍 Input classified as:', inputType);
 
+      // Check if input is unclear
+      if (inputType === 'unclear') {
+        const clarificationMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "Could you add more detail to help me create a great job description? For example: 'We need a Livelihood Coordinator for a project in Sri Lanka…'",
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'jd-request'
+        };
+
+        setMessages(prev => [...prev, clarificationMessage]);
+        setAwaitingJDInput(true);
+        setIsProcessingJD(false);
+        return;
+      }
+
+      // Check if AI is available
+      if (!aiAvailable) {
+        const offlineMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "AI is currently offline. Please try again in a few minutes.",
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, offlineMessage]);
+        setIsProcessingJD(false);
+        return;
+      }
+
+      // Store in jd_drafts table
+      const { data: draft, error: draftError } = await supabase
+        .from('jd_drafts')
+        .insert({
+          user_id: profile.id,
+          input_summary: userInput,
+          input_type: inputType,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (draftError) {
+        throw new Error('Failed to save job description request');
+      }
+
+      // Update user progress flags
+      await updateFlag('has_submitted_jd_inputs', true);
+
       let processingMessage: Message;
 
       // Create appropriate processing message based on input type
@@ -238,7 +539,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             timestamp: new Date(),
           };
           break;
-        case 'brief_with_link':
+        case 'brief_plus_link':
           const url = extractUrlFromInput(userInput);
           const brief = extractBriefFromInput(userInput);
           processingMessage = {
@@ -264,31 +565,45 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, processingMessage]);
 
       // Generate JD using the appropriate method
-      let result;
-      if (aiAvailable) {
-        // Use AI generation
-        result = await generateInitialJD(userInput, profile.id);
-      } else {
-        // Use fallback generation
-        result = await generateFallbackJD(userInput, profile.id, inputType);
+      let generatedJD: string;
+      
+      switch (inputType) {
+        case 'brief_plus_link':
+          generatedJD = await generateJDFromBriefAndLink(userInput);
+          break;
+        case 'link_only':
+          const url = extractUrlFromInput(userInput);
+          if (!url) throw new Error('No URL found');
+          generatedJD = await generateJDFromJobPostLink(url);
+          break;
+        case 'brief_only':
+          generatedJD = await generateJDFromBrief(userInput);
+          break;
+        default:
+          throw new Error('Unknown input type');
       }
 
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to generate job description');
-      }
+      // Update draft with generated JD
+      await supabase
+        .from('jd_drafts')
+        .update({ 
+          generated_jd: generatedJD,
+          status: 'completed'
+        })
+        .eq('id', draft.id);
 
       // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(result.generatedJD!);
+      const parsedJobData = parseJobDescription(generatedJD);
 
       // Create final message with job description
       const jobMessage: Message = {
         id: (Date.now() + 2).toString(),
-        content: result.generatedJD!,
+        content: generatedJD,
         sender: 'assistant',
         timestamp: new Date(),
         type: 'job-description',
         metadata: {
-          jdDraftId: result.jdDraft!.id,
+          jdDraftId: draft.id,
           jobData: parsedJobData,
         }
       };
@@ -315,7 +630,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         title: 'Generated Job Description',
         content: 'AI-generated job description ready for review',
         data: parsedJobData,
-        draftId: result.jdDraft!.id
+        draftId: draft.id
       });
 
       console.log('✅ JD generation completed successfully');
@@ -323,197 +638,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
-      // Show error message with retry option
+      // Show error message
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: `❌ ${error instanceof Error ? error.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'retry-option',
-        metadata: {
-          canRetry: true
-        }
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsProcessingJD(false);
-    }
-  };
-
-  // Fallback JD generation when AI is not available
-  const generateFallbackJD = async (input: string, userId: string, inputType: string): Promise<{
-    success: boolean;
-    jdDraft?: any;
-    generatedJD?: string;
-    error?: string;
-  }> => {
-    try {
-      // Create draft record
-      const { data: draft, error: draftError } = await supabase
-        .from('jd_drafts')
-        .insert({
-          user_id: userId,
-          input_type: inputType,
-          input_summary: input.substring(0, 500),
-          content: input,
-          status: 'completed'
-        })
-        .select()
-        .single();
-
-      if (draftError) {
-        throw new Error('Failed to save job description request');
-      }
-
-      // Generate template-based JD
-      const templateJD = generateTemplateJD(input, inputType);
-
-      // Update draft with generated JD
-      await supabase
-        .from('jd_drafts')
-        .update({ generated_jd: templateJD })
-        .eq('id', draft.id);
-
-      // Update user progress
-      await updateFlag('has_submitted_jd_inputs', true);
-      await updateFlag('has_generated_jd', true);
-
-      return {
-        success: true,
-        jdDraft: { ...draft, generated_jd: templateJD },
-        generatedJD: templateJD
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate job description'
-      };
-    }
-  };
-
-  // Generate template-based JD when AI is unavailable
-  const generateTemplateJD = (input: string, inputType: string): string => {
-    const brief = extractBriefFromInput(input);
-    const url = extractUrlFromInput(input);
-    
-    return `# Job Opportunity
-
-## About the Role
-${brief || 'We are seeking a dedicated professional to join our mission-driven team and contribute to meaningful social impact work.'}
-
-## Organization Context
-${url ? `Learn more about our organization: ${url}` : 'We are a mission-driven organization working to create positive change in our communities.'}
-
-## Key Responsibilities
-- Lead and support program implementation and delivery
-- Collaborate with team members and stakeholders
-- Monitor and evaluate program outcomes and impact
-- Contribute to strategic planning and organizational development
-- Maintain accurate records and reporting
-
-## Required Qualifications
-- Bachelor's degree or equivalent experience
-- 2-3 years of relevant experience in nonprofit or development sector
-- Strong communication and interpersonal skills
-- Demonstrated commitment to social impact and mission-driven work
-- Ability to work collaboratively in a team environment
-
-## Preferred Qualifications
-- Experience in program management or coordination
-- Knowledge of monitoring and evaluation practices
-- Multilingual capabilities
-- Experience working in diverse, multicultural environments
-
-## What We Offer
-- Competitive salary commensurate with experience
-- Comprehensive benefits package
-- Professional development opportunities
-- Meaningful work with direct social impact
-- Collaborative and inclusive work environment
-
-## How to Apply
-Please submit your CV and a cover letter explaining your interest in this role and how your experience aligns with our mission.
-
----
-*This job description was generated using template-based content${!aiAvailable ? ' (AI currently offline)' : ''}. Please review and customize as needed for your specific requirements.*`;
-  };
-
-  const handleJDRetry = async (draftId?: string) => {
-    if (!profile?.id) return;
-
-    setIsProcessingJD(true);
-
-    try {
-      const processingMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `🔄 Retrying job description generation${aiAvailable ? ' with AI' : ' using templates'}...\n\n🤖 Generating your professional JD...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, processingMessage]);
-
-      let result;
-      if (draftId && aiAvailable) {
-        // Retry specific draft with AI
-        result = await retryJDGeneration(draftId, profile.id);
-      } else {
-        // This shouldn't happen, but handle gracefully
-        throw new Error('No draft ID provided for retry');
-      }
-
-      if (!result.success) {
-        throw new Error(result.error || 'Retry failed');
-      }
-
-      // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(result.generatedJD!);
-
-      // Create final message with job description
-      const jobMessage: Message = {
-        id: (Date.now() + 2).toString(),
-        content: result.generatedJD!,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'job-description',
-        metadata: {
-          jdDraftId: draftId,
-          jobData: parsedJobData,
-        }
-      };
-
-      // Replace processing message with final result
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id ? jobMessage : msg
-      ));
-
-      // Show success message
-      const successMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: "🎉 Success! Here's your job description. You can now refine, update tone, or view SDG alignment.",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
-
-      setMessages(prev => [...prev, successMessage]);
-
-      // Show the structured JD in the right panel
-      onContentChange({
-        type: 'job-description',
-        title: 'Generated Job Description',
-        content: 'AI-generated job description ready for review',
-        data: parsedJobData,
-        draftId: draftId
-      });
-
-    } catch (error) {
-      console.error('❌ Error retrying JD generation:', error);
-      
-      const errorMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: `❌ ${error instanceof Error ? error.message : 'Sorry, the retry also failed. Please try again in a few minutes.'}`,
+        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -521,152 +649,6 @@ Please submit your CV and a cover letter explaining your interest in this role a
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsProcessingJD(false);
-    }
-  };
-
-  const handleFileUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Check if we're in JD mode and this is a supported file type
-    if (awaitingJDInput) {
-      const allowedTypes = ['doc', 'docx', 'pdf', 'txt'];
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension && allowedTypes.includes(fileExtension)) {
-        // Process as JD file upload
-        setIsProcessingJD(true);
-        setAwaitingJDInput(false);
-
-        try {
-          const processingMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, processingMessage]);
-
-          // Extract file content
-          const fileContent = await extractFileContent(file);
-
-          // Generate improved JD
-          let result;
-          if (aiAvailable) {
-            result = await generateInitialJD(fileContent, profile.id);
-          } else {
-            result = await generateFallbackJD(fileContent, profile.id, 'upload');
-          }
-
-          if (!result.success) {
-            throw new Error(result.error || 'Failed to process uploaded file');
-          }
-
-          // Parse the generated JD into structured data
-          const parsedJobData = parseJobDescription(result.generatedJD!);
-
-          // Create final message with improved job description
-          const jobMessage: Message = {
-            id: (Date.now() + 2).toString(),
-            content: result.generatedJD!,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'job-description',
-            metadata: {
-              jdDraftId: result.jdDraft!.id,
-              jobData: parsedJobData,
-            }
-          };
-
-          // Replace processing message with final result
-          setMessages(prev => prev.map(msg => 
-            msg.id === processingMessage.id ? jobMessage : msg
-          ));
-
-          // Show the structured JD in the right panel
-          onContentChange({
-            type: 'job-description',
-            title: 'Generated Job Description',
-            content: 'AI-generated job description ready for review',
-            data: parsedJobData,
-            draftId: result.jdDraft!.id
-          });
-
-        } catch (error) {
-          console.error('❌ Error processing JD file upload:', error);
-          
-          const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `❌ ${error instanceof Error ? error.message : 'Sorry, I couldn\'t process that file. Please try again or use a different format.'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, errorMessage]);
-        } finally {
-          setIsProcessingJD(false);
-        }
-
-        e.target.value = '';
-        return;
-      }
-    }
-
-    // Regular file upload handling (CV, etc.)
-    const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(fileExtension)) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `Sorry, only ${allowedTypes.join(', ')} files are supported.`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-      return;
-    }
-
-    if (file.name.toLowerCase().includes('cv') || file.name.toLowerCase().includes('resume')) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: "Perfect! I've received your CV. Let me analyze it for you...",
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-      
-      try {
-        await updateFlag('has_uploaded_cv', true);
-        setTimeout(async () => {
-          await updateFlag('has_analyzed_cv', true);
-        }, 2000);
-      } catch (error) {
-        console.error('Error updating CV upload progress:', error);
-        toast.error('Failed to update progress. Please try again.');
-      }
-    } else {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `I've received your ${fileExtension} file: "${file.name}". How would you like me to help you with this document?`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-    }
-
-    e.target.value = '';
-  };
-
-  // Helper function to extract file content
-  const extractFileContent = async (file: File): Promise<string> => {
-    try {
-      const text = await file.text();
-      return text.substring(0, 5000); // Limit to first 5000 characters
-    } catch (error) {
-      throw new Error('Failed to extract content from file');
     }
   };
 
@@ -769,6 +751,176 @@ Please submit your CV and a cover letter explaining your interest in this role a
     }
   };
 
+  const handleFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check if we're in JD mode and this is a supported file type
+    if (awaitingJDInput) {
+      const allowedTypes = ['doc', 'docx', 'pdf', 'txt'];
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension && allowedTypes.includes(fileExtension)) {
+        // Process as JD file upload
+        setIsProcessingJD(true);
+        setAwaitingJDInput(false);
+
+        try {
+          if (!aiAvailable) {
+            const offlineMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              content: "AI is currently offline. Please try again in a few minutes.",
+              sender: 'assistant',
+              timestamp: new Date(),
+            };
+
+            setMessages(prev => [...prev, offlineMessage]);
+            setIsProcessingJD(false);
+            return;
+          }
+
+          await updateFlag('has_submitted_jd_inputs', true);
+
+          const processingMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, processingMessage]);
+
+          // Extract file content
+          const fileContent = await extractFileContent(file);
+
+          // Store in jd_drafts table
+          const { data: draft, error: draftError } = await supabase
+            .from('jd_drafts')
+            .insert({
+              user_id: profile.id,
+              input_summary: `Uploaded file: ${file.name}`,
+              input_type: 'upload',
+              file_name: file.name,
+              file_type: fileExtension,
+              content: fileContent,
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (draftError) {
+            throw new Error('Failed to save uploaded file');
+          }
+
+          // Generate improved JD
+          const generatedJD = await generateJDFromUploadedDraft(fileContent, file.name);
+          
+          // Update draft with generated JD
+          await supabase
+            .from('jd_drafts')
+            .update({ 
+              generated_jd: generatedJD,
+              status: 'completed'
+            })
+            .eq('id', draft.id);
+
+          // Parse the generated JD into structured data
+          const parsedJobData = parseJobDescription(generatedJD);
+
+          // Create final message with improved job description
+          const jobMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: generatedJD,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'job-description',
+            metadata: {
+              jdDraftId: draft.id,
+              jobData: parsedJobData,
+            }
+          };
+
+          // Replace processing message with final result
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? jobMessage : msg
+          ));
+
+          // Show the structured JD in the right panel
+          onContentChange({
+            type: 'job-description',
+            title: 'Generated Job Description',
+            content: 'AI-generated job description ready for review',
+            data: parsedJobData,
+            draftId: draft.id
+          });
+
+        } catch (error) {
+          console.error('❌ Error processing JD file upload:', error);
+          
+          const errorMessage: Message = {
+            id: (Date.now() + 3).toString(),
+            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, errorMessage]);
+        } finally {
+          setIsProcessingJD(false);
+        }
+
+        e.target.value = '';
+        return;
+      }
+    }
+
+    // Regular file upload handling (CV, etc.)
+    const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!allowedTypes.includes(fileExtension)) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: `Sorry, only ${allowedTypes.join(', ')} files are supported.`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+      return;
+    }
+
+    if (file.name.toLowerCase().includes('cv') || file.name.toLowerCase().includes('resume')) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: "Perfect! I've received your CV. Let me analyze it for you...",
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+      
+      try {
+        await updateFlag('has_uploaded_cv', true);
+        setTimeout(async () => {
+          await updateFlag('has_analyzed_cv', true);
+        }, 2000);
+      } catch (error) {
+        console.error('Error updating CV upload progress:', error);
+        toast.error('Failed to update progress. Please try again.');
+      }
+    } else {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: `I've received your ${fileExtension} file: "${file.name}". How would you like me to help you with this document?`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+    }
+
+    e.target.value = '';
+  };
+
   const toggleRecording = () => {
     setIsRecording(!isRecording);
   };
@@ -776,9 +928,9 @@ Please submit your CV and a cover letter explaining your interest in this role a
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool
+    // CLEAR ALL PREVIOUS BEHAVIOR - Handle ONLY the JD tool
     if (message === 'POST_JD_TOOL_TRIGGER') {
-      console.log('🎯 JD Tool triggered');
+      console.log('🎯 JD Tool triggered - NEW FLOW');
       
       // Update progress flag
       updateFlag('has_started_jd', true);
@@ -786,10 +938,10 @@ Please submit your CV and a cover letter explaining your interest in this role a
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the NEW smart assistant message (FIXED HERE!)
+      // Send the EXACT message specified in the prompt
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. Paste a brief — e.g., \"We need a project officer for a migration program…\"\n2. Paste a brief + website/project link — I'll align the JD with your mission.\n3. Upload a JD draft — I'll refine and format it for clarity, DEI, and impact.\n4. Paste a job post link — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Paste a **brief only** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** — I'll refine and improve it.\n3. Paste a **link to an old job post** — I'll fetch and rewrite it with better clarity, DEI, and alignment.\n4. Paste a **brief + organization/project link** — I'll use both to generate a well-aligned JD.\n\nSend any one of these to begin.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -979,16 +1131,6 @@ Please submit your CV and a cover letter explaining your interest in this role a
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
                               Brief • Upload • Link
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Retry option indicators */}
-                        {message.type === 'retry-option' && message.metadata?.canRetry && (
-                          <div className="flex items-center mt-2 space-x-2">
-                            <RefreshCw className="w-3 h-3" style={{ color: '#F59E0B' }} />
-                            <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>
-                              Retry Available
                             </span>
                           </div>
                         )}
