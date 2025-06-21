@@ -158,7 +158,7 @@ export function CategorizedToolDropdowns({
       description: 'Create and post job descriptions with AI assistance',
       isActive: () => true,
       inactiveMessage: '',
-      action: () => onToolAction('post-job-generate-jd', 'Please share the link to your organizational website or the project this role supports. I\'ll use that to generate a mission-aligned JD.')
+      action: () => onToolAction('post-job-generate-jd', 'POST_JD_TOOL_TRIGGER') // Special trigger message
     },
     {
       id: 'match-candidates',

@@ -25,6 +25,14 @@ import {
   saveJobDraft,
   type WebsiteContent 
 } from '@/lib/jobBuilder';
+import { 
+  saveJDInput, 
+  generateJDFromInput, 
+  validateManualInput, 
+  parseManualInput,
+  type JDInput,
+  type JDDraft
+} from '@/lib/jobDescriptionService';
 import { generateChatResponse } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -34,10 +42,12 @@ interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description';
+  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request';
   metadata?: {
     websiteContent?: WebsiteContent;
     jobId?: string;
+    jdDraftId?: string;
+    isJDRequest?: boolean;
   };
 }
 
@@ -64,6 +74,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isFocused, setIsFocused] = useState(false);
   const [isProcessingUrl, setIsProcessingUrl] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isProcessingJD, setIsProcessingJD] = useState(false);
+  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +111,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput('');
+
+    // Check if we're awaiting JD input
+    if (awaitingJDInput) {
+      await handleJDInputResponse(currentInput);
+      return;
+    }
 
     // Check if input is a URL for job description generation
     if (isValidUrl(currentInput)) {
@@ -139,6 +157,121 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleJDInputResponse = async (userInput: string) => {
+    console.log('🎯 Processing JD input response:', userInput);
+    setIsProcessingJD(true);
+    setAwaitingJDInput(false);
+
+    try {
+      // Update progress flag
+      await updateFlag('has_submitted_jd_inputs', true);
+
+      let jdInput: JDInput;
+      let processingMessage: Message;
+
+      if (isValidUrl(userInput.trim())) {
+        // Website URL provided
+        jdInput = {
+          inputType: 'website',
+          websiteUrl: userInput.trim(),
+          rawInput: userInput
+        };
+
+        processingMessage = {
+          id: (Date.now() + 1).toString(),
+          content: `🌐 Perfect! I'm analyzing the website: ${extractDomain(userInput.trim())}\n\nI'll extract the organization's mission and context to create a tailored job description...`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+      } else {
+        // Manual input provided
+        const validation = validateManualInput(userInput);
+        
+        if (!validation.isValid) {
+          // Ask for more information
+          const clarificationMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `I need a bit more information to create a great job description. Please provide:\n\n${validation.missingFields.map(field => `• ${field}`).join('\n')}\n\nFor example: "Looking for a Gender Expert for our Livelihoods project. Need 3+ years experience in M&E, grants management, and team supervision."`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'jd-request'
+          };
+
+          setMessages(prev => [...prev, clarificationMessage]);
+          setAwaitingJDInput(true);
+          setIsProcessingJD(false);
+          return;
+        }
+
+        const parsed = parseManualInput(userInput);
+        jdInput = {
+          inputType: 'manual',
+          roleTitle: parsed.roleTitle,
+          sector: parsed.sector,
+          experienceYears: parsed.experienceYears,
+          requiredSkills: parsed.requiredSkills,
+          additionalDetails: parsed.additionalDetails,
+          rawInput: userInput
+        };
+
+        processingMessage = {
+          id: (Date.now() + 1).toString(),
+          content: `✅ Great! I have all the details I need:\n\n${jdInput.roleTitle ? `• Role: ${jdInput.roleTitle}` : ''}${jdInput.sector ? `\n• Sector: ${jdInput.sector}` : ''}${jdInput.experienceYears ? `\n• Experience: ${jdInput.experienceYears}` : ''}${jdInput.requiredSkills ? `\n• Skills: ${jdInput.requiredSkills}` : ''}\n\n🤖 Now generating your professional job description...`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+      }
+
+      setMessages(prev => [...prev, processingMessage]);
+
+      // Save input to database
+      const savedDraft = await saveJDInput(profile.id, jdInput);
+      if (!savedDraft) {
+        throw new Error('Failed to save JD input');
+      }
+
+      // Generate JD using AI
+      const generatedJD = await generateJDFromInput(savedDraft);
+
+      // Update progress flag
+      await updateFlag('has_generated_jd', true);
+
+      // Create final message with job description
+      const jobMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: generatedJD,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'job-description',
+        metadata: {
+          jdDraftId: savedDraft.id,
+        }
+      };
+
+      // Replace processing message with final result
+      setMessages(prev => prev.map(msg => 
+        msg.id === processingMessage.id ? jobMessage : msg
+      ));
+
+      console.log('✅ JD generation completed successfully');
+
+    } catch (error) {
+      console.error('❌ Error processing JD input:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: `❌ Sorry, I encountered an error while generating your job description. Please try again or contact support if the issue persists.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessingJD(false);
     }
   };
 
@@ -374,9 +507,36 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setIsRecording(!isRecording);
   };
 
-  const canSend = input.trim().length > 0 && !isTyping && !isProcessingUrl;
+  const canSend = input.trim().length > 0 && !isTyping && !isProcessingUrl && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
+    // Special handling for JD tool
+    if (message === 'POST_JD_TOOL_TRIGGER') {
+      console.log('🎯 JD Tool triggered');
+      
+      // Update progress flag
+      updateFlag('has_started_jd', true);
+      
+      // Set awaiting input state
+      setAwaitingJDInput(true);
+      
+      // Send the smart assistant message
+      const jdRequestMessage: Message = {
+        id: Date.now().toString(),
+        content: "Let's create your job description! You can either:\n\n• **Share your org/project website** (I'll analyze it to understand your mission)\n• **Or give me key details like:**\n  - Role (e.g., Gender Expert)\n  - Sector or project type (e.g., Livelihoods)\n  - Years of experience required\n  - Required skills (e.g., M&E, grants, supervision)\n\nJust paste a website URL or describe the role details, and I'll create a professional, mission-aligned job description for you! 🚀",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'jd-request',
+        metadata: {
+          isJDRequest: true
+        }
+      };
+      
+      setMessages(prev => [...prev, jdRequestMessage]);
+      return;
+    }
+    
+    // For other tools, use the existing logic
     setInput(message);
     // Auto-send the message
     setTimeout(() => handleSend(), 100);
@@ -404,24 +564,49 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
   const handlePublishJob = async (messageId: string) => {
     const message = messages.find(m => m.id === messageId);
-    if (!message?.metadata?.jobId || !profile?.id) return;
+    if (!message?.metadata?.jobId && !message?.metadata?.jdDraftId || !profile?.id) return;
 
     setIsPublishing(true);
     
     try {
-      // Update job status to published
-      const { error } = await supabase
-        .from('jobs')
-        .update({ 
-          status: 'published',
-          published_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', message.metadata.jobId)
-        .eq('user_id', profile.id);
+      let jobId = message.metadata.jobId;
+      
+      // If we have a JD draft, create a job record first
+      if (message.metadata.jdDraftId && !jobId) {
+        const { data: jobData, error: jobError } = await supabase
+          .from('jobs')
+          .insert({
+            user_id: profile.id,
+            title: 'Generated Job Description',
+            description: message.content,
+            status: 'published',
+            published_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
 
-      if (error) {
-        throw error;
+        if (jobError) {
+          throw jobError;
+        }
+        
+        jobId = jobData.id;
+      } else if (jobId) {
+        // Update existing job status to published
+        const { error } = await supabase
+          .from('jobs')
+          .update({ 
+            status: 'published',
+            published_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', jobId)
+          .eq('user_id', profile.id);
+
+        if (error) {
+          throw error;
+        }
       }
 
       // Update user progress
@@ -490,22 +675,26 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                         animate={{ scale: 1 }}
                         className={`inline-block p-3 rounded-2xl font-light leading-relaxed shadow-sm ${
                           message.type === 'suggestion' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'jd-request' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
-                                         message.type === 'suggestion' ? '#FBE4D5' : '#F1EFEC',
+                                         message.type === 'suggestion' ? '#FBE4D5' : 
+                                         message.type === 'jd-request' ? '#E8F5E8' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
-                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 'transparent'
+                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
+                                          message.type === 'jd-request' ? '#10B981' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                         
-                        {/* URL processing indicator */}
-                        {isProcessingUrl && message.content.includes('Analyzing website') && (
+                        {/* Processing indicators */}
+                        {(isProcessingUrl || isProcessingJD) && message.content.includes('analyzing') && (
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
-                              Processing...
+                              {isProcessingJD ? 'Generating JD...' : 'Processing...'}
                             </span>
                           </div>
                         )}
@@ -535,7 +724,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
             {/* Typing Indicator */}
             <AnimatePresence>
-              {(isTyping || isProcessingUrl) && (
+              {(isTyping || isProcessingUrl || isProcessingJD) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -580,7 +769,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            {isProcessingUrl ? 'Processing website...' : 'AI is thinking...'}
+                            {isProcessingJD ? 'Generating job description...' : 
+                             isProcessingUrl ? 'Processing website...' : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -626,13 +816,13 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder="Ask me anything about jobs, CVs, or matches..."
+                placeholder={awaitingJDInput ? "Share a website URL or describe the role details..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
                   boxShadow: 'none'
                 }}
-                disabled={isTyping || isProcessingUrl}
+                disabled={isTyping || isProcessingUrl || isProcessingJD}
               />
 
               <motion.div
@@ -667,7 +857,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                       onClick={handleFileUpload}
                       className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
                       style={{ color: '#66615C' }}
-                      disabled={isTyping || isProcessingUrl}
+                      disabled={isTyping || isProcessingUrl || isProcessingJD}
                     >
                       <Paperclip className="w-2.5 h-2.5" />
                     </Button>
@@ -683,7 +873,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
-                    disabled={isTyping || isProcessingUrl}
+                    disabled={isTyping || isProcessingUrl || isProcessingJD}
                   />
                 )}
 
@@ -698,7 +888,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                         color: isRecording ? '#D5765B' : '#66615C',
                         backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
                       }}
-                      disabled={isTyping || isProcessingUrl}
+                      disabled={isTyping || isProcessingUrl || isProcessingJD}
                     >
                       {isRecording ? (
                         <Square className="w-2.5 h-2.5" />
@@ -726,7 +916,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              Press Enter to send, Shift+Enter for new line
+              {awaitingJDInput ? 'Provide job details or website URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>

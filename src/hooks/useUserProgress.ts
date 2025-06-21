@@ -8,6 +8,9 @@ export interface UserProgressFlags {
   has_written_cover_letter: boolean;
   has_published_job: boolean;
   has_applied_to_job: boolean;
+  has_started_jd: boolean;
+  has_submitted_jd_inputs: boolean;
+  has_generated_jd: boolean;
 }
 
 const defaultFlags: UserProgressFlags = {
@@ -17,6 +20,9 @@ const defaultFlags: UserProgressFlags = {
   has_written_cover_letter: false,
   has_published_job: false,
   has_applied_to_job: false,
+  has_started_jd: false,
+  has_submitted_jd_inputs: false,
+  has_generated_jd: false,
 };
 
 export function useUserProgress(userId?: string) {
@@ -92,7 +98,17 @@ export function useUserProgress(userId?: string) {
       // Fetch the progress flags
       const { data, error } = await supabase
         .from('user_progress_flags')
-        .select('has_uploaded_cv, has_analyzed_cv, has_selected_job, has_written_cover_letter, has_published_job, has_applied_to_job')
+        .select(`
+          has_uploaded_cv, 
+          has_analyzed_cv, 
+          has_selected_job, 
+          has_written_cover_letter, 
+          has_published_job, 
+          has_applied_to_job,
+          has_started_jd,
+          has_submitted_jd_inputs,
+          has_generated_jd
+        `)
         .eq('user_id', userId)
         .single();
 
@@ -107,6 +123,9 @@ export function useUserProgress(userId?: string) {
           has_written_cover_letter: data.has_written_cover_letter,
           has_published_job: data.has_published_job,
           has_applied_to_job: data.has_applied_to_job,
+          has_started_jd: data.has_started_jd || false,
+          has_submitted_jd_inputs: data.has_submitted_jd_inputs || false,
+          has_generated_jd: data.has_generated_jd || false,
         });
       }
     } catch (error) {
