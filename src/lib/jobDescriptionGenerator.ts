@@ -1,6 +1,6 @@
 // Enhanced Job Description Generator with AI Fallback
 import { supabase } from './supabase';
-import { generateJobDescriptionWithFallback } from './aiModelFallback';
+import { generateJobDescription } from './ai';
 import { toast } from 'sonner';
 
 export interface JDGenerationInput {
@@ -267,7 +267,11 @@ export async function processJDGeneration(
     try {
       // Generate JD using AI with fallback
       console.log('🤖 Generating JD with AI fallback...');
-      const generatedJD = await generateJobDescriptionWithFallback(content, type, userId);
+      const generatedJD = await generateJobDescription({
+        content,
+        type,
+        userId
+      });
       
       // Update draft with generated JD
       await updateJDDraftStatus(draft.id, 'completed', generatedJD);
@@ -286,7 +290,7 @@ export async function processJDGeneration(
       await updateJDDraftStatus(draft.id, 'failed', undefined, aiError.message);
       
       // Return specific error message
-      if (aiError.message.includes('All AI models are currently unavailable')) {
+      if (aiError.message.includes('all AI models are temporarily unavailable')) {
         return {
           success: false,
           error: "Unfortunately, I'm having trouble generating the JD right now — all available AI models seem to be temporarily unavailable. Please try again in a few minutes or upload a JD draft to continue."
