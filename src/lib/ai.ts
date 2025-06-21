@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// Multiple AI configurations with fallback support
+// Your configured AI models with the correct model names
 const apiKey1 = import.meta.env.VITE_OPENROUTER_API_KEY_1;
 const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
 const apiKey3 = import.meta.env.VITE_OPENROUTER_API_KEY_3;
@@ -31,10 +31,10 @@ const apiKey3 = import.meta.env.VITE_OPENROUTER_API_KEY_3;
 const AI_CONFIGS = [
   {
     type: 'openrouter' as const,
-    name: 'DeepSeek R1 Qwen3 8B',
+    name: 'DeepSeek Chat V3',
     key: apiKey1 || '',
-    default_model: 'deepseek/deepseek-r1-0528-qwen3-8b:free',
-    description: 'Primary AI engine - DeepSeek R1 with Qwen3 8B'
+    default_model: 'deepseek/deepseek-chat-v3-0324:free',
+    description: 'Primary AI engine - DeepSeek Chat V3'
   },
   {
     type: 'openrouter' as const,
@@ -112,7 +112,7 @@ function validateAIResponse(response: any): boolean {
     return false;
   }
   
-  // Ensure response is at least 10 characters (reduced from 50 for status checks)
+  // Ensure response is at least 10 characters
   if (content.trim().length < 10) {
     return false;
   }
@@ -120,7 +120,7 @@ function validateAIResponse(response: any): boolean {
   return true;
 }
 
-// Call a single AI model with error handling
+// Call a single AI model with error handling and retry logic
 async function callSingleModel(
   config: typeof AI_CONFIGS[0],
   messages: AIMessage[],
@@ -128,7 +128,8 @@ async function callSingleModel(
     temperature?: number;
     max_tokens?: number;
     stream?: boolean;
-  } = {}
+  } = {},
+  retryCount: number = 0
 ): Promise<AIResponse> {
   const {
     temperature = 0.7,
@@ -137,7 +138,7 @@ async function callSingleModel(
   } = options;
 
   try {
-    console.log(`🤖 Trying ${config.name} (${config.default_model})`);
+    console.log(`🤖 Trying ${config.name} (${config.default_model}) - Attempt ${retryCount + 1}`);
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -159,6 +160,13 @@ async function callSingleModel(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = `${config.name} API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`;
+      
+      // Check for rate limiting
+      if (response.status === 429 && retryCount < 2) {
+        console.log(`⏳ Rate limited, retrying in ${(retryCount + 1) * 2} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
+        return callSingleModel(config, messages, options, retryCount + 1);
+      }
       
       await logError(
         'AI_API_ERROR',
@@ -254,18 +262,19 @@ export async function generateJobDescription(websiteContent: {
   content: string;
   url: string;
 }): Promise<string> {
-  const systemPrompt = `You are an AI job description expert for the nonprofit and development sector. Use the organization's website or project page to understand their mission, work, and context. Then generate a rich, mission-aligned job description for a role that fits within their goals. Make sure to include:
+  const systemPrompt = `You are an AI job description expert for the nonprofit and development sector. Use the organization's website or project page to understand their mission, work, and context. Then generate a rich, mission-aligned job description for a role that fits within their goals.
 
-Job title (based on inferred needs)
-Mission-aligned summary
-Responsibilities (purpose-driven)
-Skills & qualifications (realistic but thoughtful)
-DEI-friendly language
-Suggested salary range (based on region or similar benchmarks)
-Optionally mention SDG relevance if identifiable
-Hiring organization info (from the URL)
+Create a comprehensive job description that includes:
+- Clear job title (based on inferred needs)
+- Mission-aligned summary that connects to the organization's purpose
+- Detailed responsibilities that are purpose-driven and specific
+- Skills & qualifications (realistic but thoughtful)
+- DEI-friendly language throughout
+- Suggested salary range (based on region or similar benchmarks)
+- SDG relevance if identifiable
+- Clear application instructions
 
-Do not generate generic content. Every JD must feel unique and aligned with the cause. Use warm, professional, inviting tone.`;
+Make it professional, engaging, and unique to this organization. Use warm, professional, inviting tone that attracts mission-driven candidates.`;
 
   const userPrompt = `Based on this organization's website content, please generate a comprehensive job description:
 
@@ -279,7 +288,7 @@ Please create a job description that aligns with their mission and work.`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.8, max_tokens: 3000 });
 
   return response.content;
 }
@@ -304,7 +313,7 @@ ${cvText}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.6, max_tokens: 2500 });
 
   return response.content;
 }
@@ -340,7 +349,7 @@ ${organizationInfo}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.7, max_tokens: 2000 });
 
   return response.content;
 }
@@ -381,7 +390,7 @@ GAPS: [bullet points]`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.5, max_tokens: 2000 });
 
   // Parse the structured response
   const content = response.content;
@@ -434,7 +443,7 @@ ${targetRole}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.6, max_tokens: 2500 });
 
   return response.content;
 }
@@ -466,7 +475,7 @@ ${websiteContent ? `WEBSITE CONTENT:\n${websiteContent}` : ''}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.7, max_tokens: 2500 });
 
   return response.content;
 }
@@ -495,7 +504,7 @@ ${content}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.6, max_tokens: 2500 });
 
   return response.content;
 }
@@ -527,7 +536,7 @@ ${currentInterests}`;
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ]);
+  ], { temperature: 0.8, max_tokens: 2500 });
 
   return response.content;
 }
@@ -561,7 +570,7 @@ ${userProfile ? `User context: ${JSON.stringify(userProfile)}` : ''}`;
 
   messages.push({ role: 'user', content: userMessage });
 
-  const response = await callAI(messages);
+  const response = await callAI(messages, { temperature: 0.7, max_tokens: 1500 });
   return response.content;
 }
 
