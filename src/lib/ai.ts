@@ -23,22 +23,19 @@ export interface AIResponse {
   };
 }
 
-// Primary AI configuration with DeepSeek Chat V3 as specifically requested
-const apiKey1 = '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';
-const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
-
+// AI configurations using environment variables only
 const AI_CONFIGS = [
   {
     type: 'openrouter' as const,
     name: 'DeepSeek Chat V3 Primary',
-    key: apiKey1 || '',
+    key: import.meta.env.VITE_OPENROUTER_API_KEY_1 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Primary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
   },
   {
     type: 'openrouter' as const,
     name: 'DeepSeek Chat V3 Backup',
-    key: apiKey2 || '',
+    key: import.meta.env.VITE_OPENROUTER_API_KEY_2 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Backup AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
   }
