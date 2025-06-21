@@ -28,6 +28,29 @@ export interface JDDraft {
   updated_at: string;
 }
 
+// Input classification function
+export function classifyJDInput(input: string): 'brief_only' | 'brief_with_link' | 'link_only' {
+  const urlRegex = /(https?:\/\/[^\s]+)/;
+  const hasLink = urlRegex.test(input);
+  const plainText = input.replace(urlRegex, '').trim();
+  const hasMeaningfulText = plainText.length > 30 || plainText.split(' ').length > 6;
+
+  if (hasLink && hasMeaningfulText) return 'brief_with_link';
+  if (hasLink && !hasMeaningfulText) return 'link_only';
+  return 'brief_only';
+}
+
+// Extract URL from input
+export function extractUrlFromInput(input: string): string | null {
+  const urlMatch = input.match(/(https?:\/\/[^\s]+)/);
+  return urlMatch ? urlMatch[1] : null;
+}
+
+// Extract brief text (removing URLs)
+export function extractBriefFromInput(input: string): string {
+  return input.replace(/(https?:\/\/[^\s]+)/g, '').trim();
+}
+
 // Core function to generate initial JD using DeepSeek Chat V3
 export async function generateInitialJD(input: string, userId: string): Promise<{
   success: boolean;
@@ -53,14 +76,24 @@ export async function generateInitialJD(input: string, userId: string): Promise<
       };
     }
 
+    // Classify input type
+    const inputType = classifyJDInput(input);
+    console.log('🔍 Input classified as:', inputType);
+
     // Create initial draft record
     const draftData = {
       user_id: userId,
-      input_type: 'brief',
+      input_type: inputType,
       input_summary: input.substring(0, 500), // Limit summary length
       content: input,
       status: 'pending' as const
     };
+
+    // Add URL if present
+    const url = extractUrlFromInput(input);
+    if (url) {
+      draftData.url = url;
+    }
 
     console.log('💾 Creating initial JD draft record...');
     const { data: draft, error: draftError } = await supabase
@@ -89,9 +122,22 @@ export async function generateInitialJD(input: string, userId: string): Promise<
     await updateJDDraftStatus(draft.id, 'processing');
 
     try {
-      // Generate JD using DeepSeek Chat V3
-      console.log('🤖 Generating JD with DeepSeek Chat V3...');
-      const generatedJD = await generateJDWithAI(input);
+      // Generate JD using appropriate method based on input type
+      let generatedJD: string;
+      
+      switch (inputType) {
+        case 'brief_with_link':
+          generatedJD = await generateJDFromBriefAndLink(input);
+          break;
+        case 'link_only':
+          generatedJD = await rewriteJDFromURL(url!);
+          break;
+        case 'brief_only':
+          generatedJD = await generateJDFromBrief(input);
+          break;
+        default:
+          throw new Error('Unknown input type');
+      }
 
       // Update draft with generated JD
       await updateJDDraftStatus(draft.id, 'completed', generatedJD);
@@ -143,15 +189,17 @@ export async function generateInitialJD(input: string, userId: string): Promise<
   }
 }
 
-// Generate JD using AI with specialized prompt for nonprofit sector
-async function generateJDWithAI(input: string): Promise<string> {
-  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Your task is to create comprehensive, professional job descriptions that attract mission-driven candidates.
+// Generate JD from brief only
+export async function generateJDFromBrief(brief: string): Promise<string> {
+  console.log('📝 Generating JD from brief only');
+  
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Create a comprehensive, professional job description based on the brief provided.
 
-Based on the user's input, generate a complete job description that includes:
+Generate a complete job description that includes:
 
 1. **Job Title** - Clear, specific, and appropriate for the nonprofit sector
-2. **Organization Context** - Brief background about the type of organization/project
-3. **Role Overview** - Mission-aligned summary that connects to social impact
+2. **Organization Context** - Brief background about the type of organization
+3. **Role Overview** - Mission-aligned summary connecting to social impact
 4. **Key Responsibilities** - 5-7 specific, actionable responsibilities
 5. **Required Qualifications** - Essential skills, experience, and education
 6. **Preferred Qualifications** - Nice-to-have skills and experience
@@ -171,11 +219,11 @@ Guidelines:
 
 Format the output as a well-structured job description ready for posting.`;
 
-  const userPrompt = `Please create a comprehensive job description based on this input:
+  const userPrompt = `Please create a comprehensive job description based on this brief:
 
-"${input}"
+"${brief}"
 
-Generate a complete, professional job description that would be suitable for posting on job boards and attracting qualified candidates in the nonprofit/development sector.`;
+Generate a complete, professional job description suitable for the nonprofit/development sector.`;
 
   try {
     const response = await callAI([
@@ -194,6 +242,303 @@ Generate a complete, professional job description that would be suitable for pos
   } catch (error) {
     console.error('❌ AI generation error:', error);
     throw new Error(`AI generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Generate JD from brief + organizational link
+export async function generateJDFromBriefAndLink(input: string): Promise<string> {
+  console.log('🔗 Generating JD from brief + organizational link');
+  
+  const brief = extractBriefFromInput(input);
+  const url = extractUrlFromInput(input);
+  
+  if (!url) {
+    throw new Error('No URL found in input');
+  }
+
+  // Fetch organization context from URL
+  let orgContext = '';
+  try {
+    orgContext = await fetchOrganizationContext(url);
+  } catch (error) {
+    console.warn('⚠️ Could not fetch organization context, proceeding with brief only');
+    orgContext = `Organization website: ${url}`;
+  }
+
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Create a comprehensive, professional job description based on the brief and organizational context provided.
+
+Use the organizational context to:
+- Align the role with the organization's mission and values
+- Include relevant sector-specific language and requirements
+- Connect the position to the organization's impact areas
+- Ensure cultural and operational fit
+
+Generate a complete job description that includes:
+
+1. **Job Title** - Clear, specific, and appropriate for this organization
+2. **About the Organization** - Brief background using the provided context
+3. **Role Overview** - Mission-aligned summary connecting to the organization's work
+4. **Key Responsibilities** - 5-7 specific responsibilities aligned with org goals
+5. **Required Qualifications** - Essential skills, experience, and education
+6. **Preferred Qualifications** - Nice-to-have skills and experience
+7. **Skills & Competencies** - Technical and soft skills needed
+8. **Working Conditions** - Location, travel requirements, work environment
+9. **What We Offer** - Benefits, growth opportunities, impact potential
+10. **How to Apply** - Clear application instructions
+
+Guidelines:
+- Use inclusive, DEI-friendly language throughout
+- Focus on impact and mission alignment with this specific organization
+- Be specific about experience requirements relevant to their sector
+- Include relevant SDG connections based on their work
+- Use professional but warm tone that attracts purpose-driven candidates
+- Ensure the JD reflects the organization's culture and values
+- Make it engaging and inspiring while remaining professional
+
+Format the output as a well-structured job description ready for posting.`;
+
+  const userPrompt = `Please create a comprehensive job description based on this information:
+
+**Job Brief:**
+"${brief}"
+
+**Organization Context:**
+${orgContext}
+
+Generate a complete, professional job description that aligns with this organization's mission and work.`;
+
+  try {
+    const response = await callAI([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], {
+      temperature: 0.7,
+      max_tokens: 4000
+    });
+
+    if (!response.content || response.content.trim().length < 200) {
+      throw new Error('Generated job description is too short or empty');
+    }
+
+    return response.content;
+  } catch (error) {
+    console.error('❌ AI generation error:', error);
+    throw new Error(`AI generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Rewrite JD from existing URL
+export async function rewriteJDFromURL(url: string): Promise<string> {
+  console.log('🔄 Rewriting JD from existing URL:', url);
+  
+  // Fetch existing job posting content
+  let existingJD = '';
+  try {
+    existingJD = await fetchJobPostingContent(url);
+  } catch (error) {
+    throw new Error('Could not fetch content from the provided URL. Please check the link and try again.');
+  }
+
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Rewrite and improve the provided job posting with better clarity, DEI language, and nonprofit sector alignment.
+
+Improvements to make:
+- Enhance clarity and readability
+- Use inclusive, DEI-friendly language throughout
+- Improve structure and organization
+- Add mission-aligned language appropriate for nonprofit sector
+- Strengthen impact statements and purpose-driven messaging
+- Ensure professional tone while remaining engaging
+- Add any missing standard sections
+- Remove jargon and make language accessible
+- Include relevant SDG connections where appropriate
+
+Generate a complete, improved job description that includes:
+
+1. **Job Title** - Clear and compelling
+2. **Organization Context** - Brief background about the organization
+3. **Role Overview** - Mission-aligned summary
+4. **Key Responsibilities** - Well-organized and specific
+5. **Required Qualifications** - Clear and realistic
+6. **Preferred Qualifications** - Nice-to-have skills
+7. **Skills & Competencies** - Technical and soft skills
+8. **Working Conditions** - Location, travel, work environment
+9. **What We Offer** - Benefits and growth opportunities
+10. **How to Apply** - Clear application process
+
+Guidelines:
+- Maintain the core intent and requirements of the original posting
+- Significantly improve language, structure, and appeal
+- Focus on attracting mission-driven candidates
+- Use warm, professional tone appropriate for nonprofit sector
+- Ensure the rewritten JD is ready for immediate posting
+
+Format the output as a well-structured, professional job description.`;
+
+  const userPrompt = `Please rewrite and improve this job posting:
+
+**Source URL:** ${url}
+
+**Original Job Posting:**
+${existingJD}
+
+Create an improved version with better clarity, DEI language, and nonprofit sector alignment.`;
+
+  try {
+    const response = await callAI([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], {
+      temperature: 0.7,
+      max_tokens: 4000
+    });
+
+    if (!response.content || response.content.trim().length < 200) {
+      throw new Error('Generated job description is too short or empty');
+    }
+
+    return response.content;
+  } catch (error) {
+    console.error('❌ AI generation error:', error);
+    throw new Error(`AI generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Refine uploaded JD file
+export async function refineUploadedJD(fileContent: string, fileName: string): Promise<string> {
+  console.log('📄 Refining uploaded JD file:', fileName);
+  
+  const systemPrompt = `You are an expert job description writer specializing in the nonprofit and development sector. Refine and improve the uploaded job description draft with better structure, clarity, and nonprofit sector best practices.
+
+Improvements to make:
+- Enhance overall structure and organization
+- Improve clarity and readability
+- Use inclusive, DEI-friendly language throughout
+- Strengthen mission alignment and impact messaging
+- Add professional polish while maintaining authenticity
+- Ensure all standard sections are present and well-written
+- Remove jargon and improve accessibility
+- Add relevant SDG connections where appropriate
+- Optimize for attracting purpose-driven candidates
+
+Generate a refined job description that includes:
+
+1. **Job Title** - Clear and compelling
+2. **Organization Context** - Professional background
+3. **Role Overview** - Mission-aligned summary
+4. **Key Responsibilities** - Well-organized and specific
+5. **Required Qualifications** - Clear and realistic
+6. **Preferred Qualifications** - Nice-to-have skills
+7. **Skills & Competencies** - Technical and soft skills
+8. **Working Conditions** - Location, travel, work environment
+9. **What We Offer** - Benefits and growth opportunities
+10. **How to Apply** - Clear application process
+
+Guidelines:
+- Preserve the original intent and core requirements
+- Significantly improve language, structure, and professional appeal
+- Focus on nonprofit sector best practices
+- Use warm, professional tone that attracts mission-driven talent
+- Ensure the refined JD is ready for immediate posting
+- Maintain any organization-specific details and requirements
+
+Format the output as a polished, professional job description.`;
+
+  const userPrompt = `Please refine and improve this job description draft:
+
+**Original File:** ${fileName}
+
+**Content:**
+${fileContent}
+
+Create a refined, professional version optimized for the nonprofit sector.`;
+
+  try {
+    const response = await callAI([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], {
+      temperature: 0.6,
+      max_tokens: 4000
+    });
+
+    if (!response.content || response.content.trim().length < 200) {
+      throw new Error('Generated job description is too short or empty');
+    }
+
+    return response.content;
+  } catch (error) {
+    console.error('❌ AI generation error:', error);
+    throw new Error(`AI generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+// Fetch organization context from URL
+async function fetchOrganizationContext(url: string): Promise<string> {
+  try {
+    // Use a CORS proxy service to fetch the website content
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const html = data.contents;
+    
+    // Create a temporary DOM element to parse HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Extract title
+    const title = doc.querySelector('title')?.textContent || 'Organization';
+    
+    // Extract meta description
+    const metaDescription = doc.querySelector('meta[name="description"]')?.getAttribute('content') || 
+                           doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '';
+    
+    // Extract main content (first 500 words)
+    const bodyText = doc.body?.textContent || '';
+    const words = bodyText.replace(/\s+/g, ' ').trim().split(' ');
+    const content = words.slice(0, 500).join(' ');
+    
+    return `Organization: ${title}\nDescription: ${metaDescription}\nContent: ${content}`;
+  } catch (error) {
+    console.error('Error fetching organization context:', error);
+    throw new Error('Failed to fetch organization information from URL');
+  }
+}
+
+// Fetch job posting content from URL
+async function fetchJobPostingContent(url: string): Promise<string> {
+  try {
+    // Use a CORS proxy service to fetch the website content
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const html = data.contents;
+    
+    // Create a temporary DOM element to parse HTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Extract title
+    const title = doc.querySelector('title')?.textContent || 'Job Posting';
+    
+    // Extract main content
+    const bodyText = doc.body?.textContent || '';
+    const words = bodyText.replace(/\s+/g, ' ').trim().split(' ');
+    const content = words.slice(0, 1000).join(' '); // Limit to 1000 words
+    
+    return `Title: ${title}\n\nContent: ${content}`;
+  } catch (error) {
+    console.error('Error fetching job posting content:', error);
+    throw new Error('Failed to fetch job posting content from URL');
   }
 }
 
@@ -287,8 +632,23 @@ export async function retryJDGeneration(draftId: string, userId: string): Promis
     await updateJDDraftStatus(draftId, 'processing');
 
     try {
-      // Retry AI generation
-      const generatedJD = await generateJDWithAI(draft.content);
+      // Retry AI generation based on original input type
+      let generatedJD: string;
+      
+      switch (draft.input_type) {
+        case 'brief_with_link':
+          generatedJD = await generateJDFromBriefAndLink(draft.content);
+          break;
+        case 'link_only':
+          if (!draft.url) throw new Error('URL missing for link-only input');
+          generatedJD = await rewriteJDFromURL(draft.url);
+          break;
+        case 'brief_only':
+          generatedJD = await generateJDFromBrief(draft.content);
+          break;
+        default:
+          throw new Error('Unknown input type for retry');
+      }
 
       // Update draft with new generated JD
       await updateJDDraftStatus(draftId, 'completed', generatedJD);

@@ -20,7 +20,15 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { generateInitialJD, retryJDGeneration, checkJDGenerationStatus } from '@/lib/jobDescriptionGenerator';
+import { 
+  generateInitialJD, 
+  retryJDGeneration, 
+  checkJDGenerationStatus,
+  classifyJDInput,
+  extractUrlFromInput,
+  extractBriefFromInput,
+  refineUploadedJD
+} from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
@@ -194,16 +202,51 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setAwaitingJDInput(false);
 
     try {
-      const processingMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `✅ Perfect! I'm now generating a comprehensive job description using DeepSeek Chat V3...\n\n🤖 Creating a professional, mission-aligned JD that's ready for posting...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
+      // Classify the input type
+      const inputType = classifyJDInput(userInput);
+      console.log('🔍 Input classified as:', inputType);
+
+      // Show appropriate processing message based on input type
+      let processingMessage: Message;
+      
+      switch (inputType) {
+        case 'brief_with_link':
+          const url = extractUrlFromInput(userInput);
+          const brief = extractBriefFromInput(userInput);
+          processingMessage = {
+            id: (Date.now() + 1).toString(),
+            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${url}\n🤖 Generating a mission-aligned job description with DeepSeek Chat V3...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          break;
+          
+        case 'link_only':
+          const linkUrl = extractUrlFromInput(userInput);
+          processingMessage = {
+            id: (Date.now() + 1).toString(),
+            content: `🔗 Great! I'll fetch the existing job posting from: ${linkUrl}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          break;
+          
+        case 'brief_only':
+          processingMessage = {
+            id: (Date.now() + 1).toString(),
+            content: `✅ Perfect! I have your job brief.\n\n🤖 Creating a comprehensive, professional job description with DeepSeek Chat V3...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          break;
+          
+        default:
+          throw new Error('Unable to classify input type');
+      }
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Use the new generateInitialJD function
+      // Use the enhanced generateInitialJD function
       const result = await generateInitialJD(userInput, profile.id);
 
       if (!result.success) {
@@ -234,7 +277,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Show success message
       const successMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: "🎉 Here's your first draft! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
+        content: "🎉 Here's your job description! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'progress'
@@ -390,25 +433,20 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           // Extract file content
           const fileContent = await extractFileContent(file);
 
-          // Use generateInitialJD with file content
-          const result = await generateInitialJD(fileContent, profile.id);
-
-          if (!result.success) {
-            throw new Error(result.error || 'Failed to process uploaded file');
-          }
+          // Use refineUploadedJD function
+          const generatedJD = await refineUploadedJD(fileContent, file.name);
 
           // Parse the generated JD into structured data
-          const parsedJobData = parseJobDescription(result.generatedJD!);
+          const parsedJobData = parseJobDescription(generatedJD);
 
           // Create final message with improved job description
           const jobMessage: Message = {
             id: (Date.now() + 2).toString(),
-            content: result.generatedJD!,
+            content: generatedJD,
             sender: 'assistant',
             timestamp: new Date(),
             type: 'job-description',
             metadata: {
-              jdDraftId: result.jdDraft!.id,
               jobData: parsedJobData,
             }
           };
@@ -421,10 +459,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           // Show the structured JD in the right panel
           onContentChange({
             type: 'job-description',
-            title: 'Generated Job Description',
-            content: 'AI-generated job description ready for review',
-            data: parsedJobData,
-            draftId: result.jdDraft!.id
+            title: 'Refined Job Description',
+            content: 'AI-refined job description ready for review',
+            data: parsedJobData
           });
 
         } catch (error) {
