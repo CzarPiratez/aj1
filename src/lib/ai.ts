@@ -51,14 +51,67 @@ export function validateAIConfig(): boolean {
   return true;
 }
 
-// Rate limit tracking
+// Rate limit tracking with enhanced management
 let lastRateLimitError: number | null = null;
+let rateLimitResetTime: number | null = null;
 const RATE_LIMIT_COOLDOWN = 60000; // 1 minute cooldown after rate limit
+const RATE_LIMIT_CHECK_INTERVAL = 5 * 60 * 1000; // Check every 5 minutes if rate limit has reset
 
 // Check if we're in a rate limit cooldown period
 function isInRateLimitCooldown(): boolean {
   if (!lastRateLimitError) return false;
+  
+  // If we have a specific reset time, use that
+  if (rateLimitResetTime && Date.now() < rateLimitResetTime) {
+    return true;
+  }
+  
+  // Otherwise use the general cooldown
   return Date.now() - lastRateLimitError < RATE_LIMIT_COOLDOWN;
+}
+
+// Get time until rate limit resets
+function getTimeUntilReset(): string {
+  if (!rateLimitResetTime) return 'unknown';
+  
+  const now = Date.now();
+  if (now >= rateLimitResetTime) return 'now';
+  
+  const diffMs = rateLimitResetTime - now;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (diffHours > 0) {
+    return `${diffHours}h ${diffMinutes}m`;
+  } else {
+    return `${diffMinutes}m`;
+  }
+}
+
+// Enhanced rate limit error with better user guidance
+function createRateLimitError(response: Response): Error {
+  const rateLimitReset = response.headers.get('X-RateLimit-Reset');
+  const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+  
+  if (rateLimitReset) {
+    rateLimitResetTime = parseInt(rateLimitReset);
+  }
+  
+  const timeUntilReset = getTimeUntilReset();
+  
+  let errorMessage = '🚫 Daily AI request limit reached\n\n';
+  
+  if (timeUntilReset !== 'unknown' && timeUntilReset !== 'now') {
+    errorMessage += `⏰ Rate limit resets in: ${timeUntilReset}\n\n`;
+  }
+  
+  errorMessage += '💡 To continue using AI features:\n';
+  errorMessage += '• Add credits at https://openrouter.ai/credits (recommended)\n';
+  errorMessage += '• Wait for daily limit to reset (typically midnight UTC)\n';
+  errorMessage += '• Free tier: 50 requests per day\n';
+  errorMessage += '• With credits: 1000+ requests per day';
+  
+  return new Error(errorMessage);
 }
 
 // Core AI function for all AidJobs tools
@@ -78,7 +131,8 @@ export async function callAI(
 
   // Check if we're in a rate limit cooldown (unless explicitly skipped)
   if (!options.skipRateLimitCheck && isInRateLimitCooldown()) {
-    throw new Error('Rate limit cooldown active. Please wait a moment before trying again.');
+    const timeUntilReset = getTimeUntilReset();
+    throw new Error(`🚫 Rate limit active. ${timeUntilReset !== 'unknown' ? `Resets in: ${timeUntilReset}` : 'Please wait before trying again.'}\n\n💡 Add credits at https://openrouter.ai/credits to continue immediately.`);
   }
 
   const {
@@ -114,21 +168,7 @@ export async function callAI(
       
       if (response.status === 429) {
         lastRateLimitError = Date.now();
-        
-        // Extract rate limit info from headers
-        const rateLimitReset = response.headers.get('X-RateLimit-Reset');
-        const resetTime = rateLimitReset ? new Date(parseInt(rateLimitReset)) : null;
-        
-        let errorMessage = 'Rate limit exceeded. ';
-        
-        if (resetTime && resetTime > new Date()) {
-          const timeUntilReset = Math.ceil((resetTime.getTime() - Date.now()) / (1000 * 60));
-          errorMessage += `Rate limit resets in approximately ${timeUntilReset} minutes. `;
-        }
-        
-        errorMessage += 'To continue using AI features immediately, please add credits to your OpenRouter account at https://openrouter.ai/credits';
-        
-        throw new Error(errorMessage);
+        throw createRateLimitError(response);
       }
       
       throw new Error(`OpenRouter API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
@@ -136,6 +176,7 @@ export async function callAI(
 
     // Clear rate limit tracking on successful request
     lastRateLimitError = null;
+    rateLimitResetTime = null;
 
     const data = await response.json();
     
@@ -475,11 +516,16 @@ ${userProfile ? `User context: ${JSON.stringify(userProfile)}` : ''}`;
   return response.content;
 }
 
-// Utility function to check AI service status
+// Enhanced utility function to check AI service status with better error handling
 export async function checkAIStatus(): Promise<{
   available: boolean;
   model: string;
   error?: string;
+  rateLimitInfo?: {
+    isLimited: boolean;
+    resetTime?: string;
+    remaining?: number;
+  };
 }> {
   try {
     if (!validateAIConfig()) {
@@ -487,6 +533,20 @@ export async function checkAIStatus(): Promise<{
         available: false,
         model: AI_CONFIG.default_model,
         error: 'API key not configured. Please set VITE_OPENROUTER_API_KEY in your .env file.'
+      };
+    }
+
+    // Check if we're currently in a rate limit cooldown
+    if (isInRateLimitCooldown()) {
+      const timeUntilReset = getTimeUntilReset();
+      return {
+        available: false,
+        model: AI_CONFIG.default_model,
+        error: `Rate limit active. ${timeUntilReset !== 'unknown' ? `Resets in: ${timeUntilReset}` : 'Please wait before trying again.'}`,
+        rateLimitInfo: {
+          isLimited: true,
+          resetTime: timeUntilReset
+        }
       };
     }
 
@@ -502,24 +562,22 @@ export async function checkAIStatus(): Promise<{
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Don't mark as unavailable if it's just a rate limit issue
-    if (errorMessage.includes('Rate limit')) {
-      return {
-        available: false,
-        model: AI_CONFIG.default_model,
-        error: errorMessage
-      };
-    }
+    // Parse rate limit information from error message
+    const isRateLimit = errorMessage.includes('Rate limit') || errorMessage.includes('🚫');
     
     return {
       available: false,
       model: AI_CONFIG.default_model,
-      error: errorMessage
+      error: errorMessage,
+      rateLimitInfo: isRateLimit ? {
+        isLimited: true,
+        resetTime: getTimeUntilReset()
+      } : undefined
     };
   }
 }
 
-// Initialize AI service on app start
+// Initialize AI service on app start with enhanced logging
 export function initializeAI(): void {
   console.log('🔧 Initializing AI Service...');
   console.log('🔑 API Key:', AI_CONFIG.key ? `${AI_CONFIG.key.substring(0, 20)}...` : 'Not configured');
@@ -544,11 +602,16 @@ export function initializeAI(): void {
         console.log('🔴 AI Service status:', status.error);
         
         // Provide helpful guidance for rate limits
-        if (status.error?.includes('Rate limit')) {
-          console.log('💡 To resolve rate limits:');
-          console.log('   • Add credits at https://openrouter.ai/credits');
-          console.log('   • Or wait for the rate limit to reset');
+        if (status.rateLimitInfo?.isLimited) {
+          console.log('💡 Rate limit guidance:');
+          console.log('   • Add credits at https://openrouter.ai/credits (recommended)');
+          console.log('   • Wait for daily limit to reset');
           console.log('   • Free tier: 50 requests per day');
+          console.log('   • With credits: 1000+ requests per day');
+          
+          if (status.rateLimitInfo.resetTime && status.rateLimitInfo.resetTime !== 'unknown') {
+            console.log(`   • Current reset time: ${status.rateLimitInfo.resetTime}`);
+          }
         }
       }
     }).catch(error => {
@@ -558,3 +621,14 @@ export function initializeAI(): void {
     console.warn('⚠️ AI Service not properly configured');
   }
 }
+
+// Export rate limit utilities for use in UI components
+export const rateLimitUtils = {
+  isInCooldown: isInRateLimitCooldown,
+  getTimeUntilReset,
+  getRateLimitInfo: () => ({
+    lastError: lastRateLimitError,
+    resetTime: rateLimitResetTime,
+    timeUntilReset: getTimeUntilReset()
+  })
+};
