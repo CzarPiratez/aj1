@@ -206,6 +206,28 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       const inputType = classifyJDInput(userInput);
       console.log('🔍 Input classified as:', inputType);
 
+      // Validate input based on type
+      if (inputType === 'brief_only') {
+        // For brief_only, we need to check if it has enough context
+        const briefText = extractBriefFromInput(userInput);
+        const wordCount = briefText.split(/\s+/).filter(word => word.length > 0).length;
+        
+        if (wordCount < 10) {
+          const clarificationMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `I need a bit more detail to create a comprehensive job description. Please provide:\n\n• **Brief + website/project link** (e.g., "We need a field coordinator for a migration project in Kenya. Our organization: https://example.org")\n\n• **Or a more detailed brief** with organization context, role requirements, and responsibilities\n\nThis helps me create a mission-aligned JD that attracts the right candidates.`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'jd-request'
+          };
+
+          setMessages(prev => [...prev, clarificationMessage]);
+          setAwaitingJDInput(true);
+          setIsProcessingJD(false);
+          return;
+        }
+      }
+
       // Show appropriate processing message based on input type
       let processingMessage: Message;
       
@@ -234,7 +256,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'brief_only':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your job brief.\n\n🤖 Creating a comprehensive, professional job description with DeepSeek Chat V3...`,
+            content: `✅ Perfect! I have your detailed job brief.\n\n🤖 Creating a comprehensive, professional job description with DeepSeek Chat V3...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -653,10 +675,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the smart assistant message
+      // Send the corrected smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief + website or project link** (e.g., \"We need a field coordinator for a migration project in Kenya. Our organization: https://example.org\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -845,7 +867,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                               <Link className="w-3 h-3" style={{ color: '#10B981' }} />
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief • Upload • Link
+                              Brief+Link • Upload • Link
                             </span>
                           </div>
                         )}
@@ -976,7 +998,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Paste a brief + website link, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -1076,7 +1098,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput ? 'Provide brief+link, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
