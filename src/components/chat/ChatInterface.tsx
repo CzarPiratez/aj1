@@ -33,7 +33,7 @@ import {
   rewriteJDFromURL
 } from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
-import { generateChatResponse } from '@/lib/ai';
+import { generateChatResponse, checkAIStatus } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -78,6 +78,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isProcessingJD, setIsProcessingJD] = useState(false);
   const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [aiAvailable, setAiAvailable] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +100,14 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       textareaRef.current.style.height = `${newHeight}px`;
     }
   }, [input]);
+
+  // Check AI availability on component mount
+  useEffect(() => {
+    checkAIStatus().then(status => {
+      setAiAvailable(status.available);
+      console.log('🤖 AI Status:', status.available ? 'Available' : 'Unavailable');
+    });
+  }, []);
 
   // Check for failed JD generation on component mount
   useEffect(() => {
@@ -262,10 +271,17 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
     setIsTyping(true);
 
-    // Use AI service for enhanced responses
+    // Try AI service first if available, otherwise use fallback
     try {
-      const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      let aiResponse: string;
+      
+      if (aiAvailable) {
+        const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
+        aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      } else {
+        // Use enhanced fallback that doesn't depend on AI
+        aiResponse = generateEnhancedFallbackResponse(currentInput);
+      }
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -280,10 +296,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } catch (error) {
       console.error('Error getting AI response:', error);
       
-      // Fallback to simple response
+      // Fallback to enhanced response
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: generateSimpleResponse(currentInput),
+        content: generateEnhancedFallbackResponse(currentInput),
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -359,7 +375,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'brief_with_link':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${extractDomain(url!)}\n🤖 Generating a mission-aligned job description with DeepSeek Chat V3...`,
+            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${extractDomain(url!)}\n🤖 ${aiAvailable ? 'Generating a mission-aligned job description with AI...' : 'Creating a job description based on your input...'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -368,7 +384,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'link_only':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `🔗 Great! I'll fetch the existing job posting from: ${extractDomain(url!)}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
+            content: `🔗 Great! I'll fetch the existing job posting from: ${extractDomain(url!)}\n\n🤖 ${aiAvailable ? 'Rewriting it with better clarity, DEI language, and nonprofit alignment...' : 'Processing the job posting...'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -377,7 +393,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'brief_only':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your detailed job brief.\n\n🤖 Creating a comprehensive, professional job description with DeepSeek Chat V3...`,
+            content: `✅ Perfect! I have your detailed job brief.\n\n🤖 ${aiAvailable ? 'Creating a comprehensive, professional job description with AI...' : 'Creating a job description based on your brief...'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -392,23 +408,29 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Update draft status to processing
       await updateJDDraftStatus(savedDraft.id, 'processing');
 
-      // Generate JD using appropriate method based on input type
+      // Generate JD using appropriate method based on input type and AI availability
       let generatedJD: string;
       
       try {
-        switch (inputType) {
-          case 'brief_with_link':
-            generatedJD = await generateJDFromBriefAndLink(userInput);
-            break;
-          case 'link_only':
-            if (!url) throw new Error('No URL found in input');
-            generatedJD = await rewriteJDFromURL(url);
-            break;
-          case 'brief_only':
-            generatedJD = await generateJDFromBrief(userInput);
-            break;
-          default:
-            throw new Error('Unknown input type');
+        if (aiAvailable) {
+          // Use AI-powered generation
+          switch (inputType) {
+            case 'brief_with_link':
+              generatedJD = await generateJDFromBriefAndLink(userInput);
+              break;
+            case 'link_only':
+              if (!url) throw new Error('No URL found in input');
+              generatedJD = await rewriteJDFromURL(url);
+              break;
+            case 'brief_only':
+              generatedJD = await generateJDFromBrief(userInput);
+              break;
+            default:
+              throw new Error('Unknown input type');
+          }
+        } else {
+          // Use fallback generation without AI
+          generatedJD = generateFallbackJD(inputType, userInput, url);
         }
 
         // Update draft with generated JD
@@ -441,7 +463,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         // Show success message
         const successMessage: Message = {
           id: (Date.now() + 3).toString(),
-          content: "🎉 Here's your job description! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
+          content: `🎉 Here's your job description! ${aiAvailable ? 'You can now refine, update tone, or view SDG alignment.' : 'This is a basic template - connect AI for advanced features.'} The job description is ready for review and publishing.`,
           sender: 'assistant',
           timestamp: new Date(),
           type: 'progress'
@@ -453,7 +475,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         onContentChange({
           type: 'job-description',
           title: 'Generated Job Description',
-          content: 'AI-generated job description ready for review',
+          content: aiAvailable ? 'AI-generated job description ready for review' : 'Template job description ready for customization',
           data: parsedJobData,
           draftId: savedDraft.id
         });
@@ -462,6 +484,66 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       } catch (aiError: any) {
         console.error('❌ AI generation failed:', aiError);
+        
+        // If AI fails, try fallback generation
+        if (aiAvailable) {
+          try {
+            console.log('🔄 AI failed, trying fallback generation...');
+            generatedJD = generateFallbackJD(inputType, userInput, url);
+            
+            // Update draft with fallback JD
+            await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
+
+            // Parse the generated JD into structured data
+            const parsedJobData = parseJobDescription(generatedJD);
+
+            // Update progress flag
+            await updateFlag('has_generated_jd', true);
+
+            // Create final message with job description
+            const jobMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: generatedJD,
+              sender: 'assistant',
+              timestamp: new Date(),
+              type: 'job-description',
+              metadata: {
+                jdDraftId: savedDraft.id,
+                jobData: parsedJobData,
+              }
+            };
+
+            // Replace processing message with final result
+            setMessages(prev => prev.map(msg => 
+              msg.id === processingMessage.id ? jobMessage : msg
+            ));
+
+            // Show success message with fallback note
+            const successMessage: Message = {
+              id: (Date.now() + 3).toString(),
+              content: "🎉 Here's your job description! I used a template approach since AI is currently unavailable. You can customize it further as needed.",
+              sender: 'assistant',
+              timestamp: new Date(),
+              type: 'progress'
+            };
+
+            setMessages(prev => [...prev, successMessage]);
+
+            // Show the structured JD in the right panel
+            onContentChange({
+              type: 'job-description',
+              title: 'Generated Job Description',
+              content: 'Template job description ready for customization',
+              data: parsedJobData,
+              draftId: savedDraft.id
+            });
+
+            console.log('✅ Fallback JD generation completed successfully');
+            return;
+          } catch (fallbackError) {
+            console.error('❌ Fallback generation also failed:', fallbackError);
+          }
+        }
         
         // Update draft with error
         await updateJDDraftStatus(savedDraft.id, 'failed', undefined, aiError.message);
@@ -499,6 +581,111 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
+  // Generate fallback JD when AI is not available
+  const generateFallbackJD = (inputType: string, userInput: string, url?: string | null): string => {
+    const brief = extractBriefFromInput(userInput);
+    const domain = url ? extractDomain(url) : 'Organization';
+    
+    // Extract basic info from the brief
+    const briefLower = brief.toLowerCase();
+    let jobTitle = 'Program Officer';
+    let sector = 'Development';
+    
+    // Try to extract job title
+    const titleKeywords = {
+      'coordinator': 'Program Coordinator',
+      'manager': 'Program Manager', 
+      'officer': 'Program Officer',
+      'specialist': 'Technical Specialist',
+      'expert': 'Technical Expert',
+      'director': 'Program Director',
+      'assistant': 'Program Assistant'
+    };
+    
+    for (const [keyword, title] of Object.entries(titleKeywords)) {
+      if (briefLower.includes(keyword)) {
+        jobTitle = title;
+        break;
+      }
+    }
+    
+    // Try to extract sector
+    const sectorKeywords = {
+      'health': 'Health',
+      'education': 'Education',
+      'environment': 'Environment',
+      'humanitarian': 'Humanitarian',
+      'migration': 'Migration & Displacement',
+      'gender': 'Gender & Inclusion',
+      'water': 'Water & Sanitation'
+    };
+    
+    for (const [keyword, sectorName] of Object.entries(sectorKeywords)) {
+      if (briefLower.includes(keyword)) {
+        sector = sectorName;
+        break;
+      }
+    }
+
+    return `# ${jobTitle}
+
+## About the Organization
+${domain} is a mission-driven organization working to create positive impact in the ${sector.toLowerCase()} sector. We are committed to sustainable development and meaningful change in the communities we serve.
+
+## Role Overview
+We are seeking a dedicated ${jobTitle} to join our team and contribute to our mission of creating lasting positive impact. This role offers an opportunity to work on meaningful projects that make a real difference in people's lives.
+
+**Original Brief:** ${brief}
+
+## Key Responsibilities
+- Lead and coordinate program activities in alignment with organizational goals
+- Develop and implement project strategies and work plans
+- Monitor and evaluate program progress and impact
+- Build and maintain relationships with key stakeholders and partners
+- Ensure compliance with donor requirements and organizational policies
+- Prepare regular reports and documentation
+- Support capacity building initiatives within the team and with partners
+
+## Required Qualifications
+- Bachelor's degree in relevant field (Master's preferred)
+- Minimum 3-5 years of experience in ${sector.toLowerCase()} or related sector
+- Strong project management and coordination skills
+- Excellent written and verbal communication skills
+- Experience working with diverse stakeholders and communities
+- Proficiency in English (additional languages an asset)
+- Strong analytical and problem-solving abilities
+
+## Preferred Qualifications
+- Experience in nonprofit or development sector
+- Knowledge of monitoring and evaluation frameworks
+- Experience with donor reporting and compliance
+- Cross-cultural competency and sensitivity
+- Computer literacy including MS Office and project management tools
+
+## Working Conditions
+- Location: ${url ? `Based on ${domain} operations` : 'To be determined'}
+- Contract Type: Full-time
+- Travel: May require domestic and/or international travel
+- Work Environment: Collaborative team environment with opportunities for professional growth
+
+## What We Offer
+- Competitive salary commensurate with experience
+- Comprehensive benefits package
+- Professional development opportunities
+- Meaningful work with direct impact on communities
+- Collaborative and inclusive work environment
+- Opportunities for career advancement
+
+## How to Apply
+Please submit your CV and a cover letter explaining your interest in this position and relevant experience. Applications should be sent to the hiring team with the subject line "${jobTitle} Application - [Your Name]".
+
+We are an equal opportunity employer committed to diversity and inclusion. We encourage applications from all qualified candidates regardless of race, gender, age, religion, sexual orientation, or disability status.
+
+---
+
+*This job description was generated based on your input. ${aiAvailable ? 'AI services are currently unavailable, so this is a template version.' : 'Connect AI services for more advanced and customized job descriptions.'}*`;
+  };
+
   const handleJDRetry = async (draftId?: string) => {
     if (!profile?.id) return;
 
@@ -507,7 +694,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     try {
       const processingMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `🔄 Retrying job description generation with DeepSeek Chat V3...\n\n🤖 Generating your professional JD...`,
+        content: `🔄 ${aiAvailable ? 'Retrying job description generation with AI...' : 'Retrying with template generation...'}\n\n🤖 ${aiAvailable ? 'Generating your professional JD...' : 'Creating your job description...'}`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -515,12 +702,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, processingMessage]);
 
       let result;
-      if (draftId) {
-        // Retry specific draft
+      if (draftId && aiAvailable) {
+        // Retry specific draft with AI
         result = await retryJDGeneration(draftId, profile.id);
       } else {
         // This shouldn't happen, but handle gracefully
-        throw new Error('No draft ID provided for retry');
+        throw new Error('No draft ID provided for retry or AI unavailable');
       }
 
       if (!result.success) {
@@ -604,7 +791,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
           const processingMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            content: `📄 Perfect! I received your file: "${file.name}"\n\n${aiAvailable ? 'I\'m extracting the content and improving it with better structure, DEI language, and nonprofit alignment...' : 'I\'m processing your file and creating an improved version...'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -633,8 +820,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             await updateJDDraftStatus(savedDraft.id, 'processing');
           }
 
-          // Use refineUploadedJD function
-          const generatedJD = await refineUploadedJD(fileContent, file.name);
+          // Generate improved JD
+          let generatedJD: string;
+          
+          if (aiAvailable) {
+            // Use AI-powered refinement
+            generatedJD = await refineUploadedJD(fileContent, file.name);
+          } else {
+            // Use fallback refinement
+            generatedJD = generateFallbackRefinedJD(fileContent, file.name);
+          }
 
           // Update draft with generated JD
           if (savedDraft) {
@@ -668,7 +863,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           onContentChange({
             type: 'job-description',
             title: 'Refined Job Description',
-            content: 'AI-refined job description ready for review',
+            content: aiAvailable ? 'AI-refined job description ready for review' : 'Refined job description ready for review',
             data: parsedJobData,
             draftId: savedDraft.id
           });
@@ -747,15 +942,47 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     e.target.value = '';
   };
 
-  const generateSimpleResponse = (userInput: string): string => {
+  // Generate fallback refined JD when AI is not available
+  const generateFallbackRefinedJD = (fileContent: string, fileName: string): string => {
+    // Basic cleanup and formatting
+    let refined = fileContent;
+    
+    // Remove excessive whitespace
+    refined = refined.replace(/\s+/g, ' ').trim();
+    
+    // Add basic structure if missing
+    if (!refined.includes('Responsibilities') && !refined.includes('Duties')) {
+      refined += '\n\n## Key Responsibilities\n- [Please add specific responsibilities based on the role]';
+    }
+    
+    if (!refined.includes('Qualifications') && !refined.includes('Requirements')) {
+      refined += '\n\n## Required Qualifications\n- [Please add required qualifications and experience]';
+    }
+    
+    if (!refined.includes('Apply') && !refined.includes('Contact')) {
+      refined += '\n\n## How to Apply\nPlease submit your CV and cover letter to the hiring team.';
+    }
+    
+    return `# Refined Job Description
+*Processed from: ${fileName}*
+
+${refined}
+
+---
+
+*This job description has been processed and formatted. ${aiAvailable ? 'AI services are currently unavailable for advanced refinement.' : 'Connect AI services for advanced refinement and optimization.'}*`;
+  };
+
+  // Enhanced fallback response that doesn't depend on AI
+  const generateEnhancedFallbackResponse = (userInput: string): string => {
     const input = userInput.toLowerCase();
     
     if (input.includes('upload') && input.includes('cv')) {
       return "I'll help you upload and analyze your CV. Please select the file you'd like to upload, and I'll extract key information like skills, experience, and qualifications to help match you with relevant nonprofit opportunities.";
     } else if (input.includes('post a job') || input.includes('generate') && input.includes('job description')) {
-      return "Please share the link to your organizational website or the project this role supports. I'll use that to generate a mission-aligned JD.";
+      return "I can help you create a job description! Please share:\n\n• A brief description of the role you need\n• Your organization's website (optional)\n• Or upload an existing job description to refine\n\nI'll create a professional, mission-aligned job description for you.";
     } else if (input.includes('search') && input.includes('ai')) {
-      return "I'll use AI to search for jobs that match your profile and preferences. I can analyze job descriptions, requirements, and company cultures to find the best opportunities for you.";
+      return "I'll help you search for jobs that match your profile and preferences. I can analyze job descriptions, requirements, and company cultures to find the best opportunities for you in the nonprofit sector.";
     } else if (input.includes('manual') && input.includes('search')) {
       return "I'll help you set up manual job search filters and criteria. You can browse through job listings with custom filters for location, salary, organization type, and more.";
     } else if (input.includes('match') && input.includes('cv')) {
@@ -773,7 +1000,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } else if (input.includes('refine') && input.includes('cover letter')) {
       return "I'll help you polish and refine your existing cover letter to make it more impactful, personalized, and aligned with the specific role you're applying for.";
     } else {
-      return "I'm here to help with all aspects of nonprofit recruitment and career development. What specific task would you like to focus on today?";
+      return `I'm here to help with all aspects of nonprofit recruitment and career development. ${aiAvailable ? '' : 'Note: AI services are currently unavailable, but I can still assist with basic functions.'} What specific task would you like to focus on today?`;
     }
   };
 
@@ -863,7 +1090,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the UPDATED smart assistant message
+      // Send the UPDATED smart assistant message (this is the key fix!)
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Paste a brief** — e.g., \"We need a project officer for a migration program…\"\n2. **Paste a brief + website/project link** — I'll align the JD with your mission.\n3. **Upload a JD draft** — I'll refine and format it for clarity, DEI, and impact.\n4. **Paste a job post link** — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
@@ -1041,7 +1268,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
-                              Generating with DeepSeek Chat V3...
+                              {aiAvailable ? 'Generating with AI...' : 'Creating template...'}
                             </span>
                           </div>
                         )}
@@ -1140,7 +1367,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            {isProcessingJD ? 'Generating job description...' : 'AI is thinking...'}
+                            {isProcessingJD ? (aiAvailable ? 'Generating job description...' : 'Creating template...') : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -1277,6 +1504,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 <span>{input.length}</span>
                 <span>/</span>
                 <span>2000</span>
+                {!aiAvailable && (
+                  <>
+                    <span>•</span>
+                    <span className="text-orange-500">AI Offline</span>
+                  </>
+                )}
               </div>
             </div>
           </motion.div>
