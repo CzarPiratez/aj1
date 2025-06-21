@@ -139,6 +139,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     if (!profile?.id) return null;
 
     try {
+      console.log('💾 Saving JD input to database:', { inputType, inputSummary: inputSummary.substring(0, 50) + '...' });
+      
       const { data, error } = await supabase
         .from('jd_drafts')
         .insert({
@@ -156,6 +158,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       if (error) {
         console.error('❌ Error saving JD input:', error);
+        toast.error('Failed to save job description input');
         return null;
       }
 
@@ -163,6 +166,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return data;
     } catch (error) {
       console.error('❌ Error in saveJDInputToDatabase:', error);
+      toast.error('Failed to save job description input');
       return null;
     }
   };
@@ -215,6 +219,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     
     return allowedTypes.includes(file.type) || (fileExtension && allowedExtensions.includes(fileExtension));
+  };
+
+  // Helper function to extract domain from URL
+  const extractDomain = (url: string): string => {
+    try {
+      const domain = new URL(url).hostname;
+      return domain.replace('www.', '');
+    } catch {
+      return url;
+    }
   };
 
   const handleSend = async () => {
@@ -283,7 +297,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   const handleJDInputResponse = async (userInput: string) => {
-    console.log('🎯 Processing JD input response:', userInput);
+    console.log('🎯 Processing JD input response:', userInput.substring(0, 100) + '...');
     setIsProcessingJD(true);
     setAwaitingJDInput(false);
 
@@ -334,6 +348,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           break;
       }
 
+      if (!savedDraft) {
+        throw new Error('Failed to save job description input');
+      }
+
       // Show appropriate processing message based on input type
       let processingMessage: Message;
       
@@ -372,9 +390,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, processingMessage]);
 
       // Update draft status to processing
-      if (savedDraft) {
-        await updateJDDraftStatus(savedDraft.id, 'processing');
-      }
+      await updateJDDraftStatus(savedDraft.id, 'processing');
 
       // Generate JD using appropriate method based on input type
       let generatedJD: string;
@@ -396,9 +412,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         }
 
         // Update draft with generated JD
-        if (savedDraft) {
-          await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
-        }
+        await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
 
         // Parse the generated JD into structured data
         const parsedJobData = parseJobDescription(generatedJD);
@@ -414,7 +428,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           timestamp: new Date(),
           type: 'job-description',
           metadata: {
-            jdDraftId: savedDraft?.id,
+            jdDraftId: savedDraft.id,
             jobData: parsedJobData,
           }
         };
@@ -441,7 +455,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           title: 'Generated Job Description',
           content: 'AI-generated job description ready for review',
           data: parsedJobData,
-          draftId: savedDraft?.id
+          draftId: savedDraft.id
         });
 
         console.log('✅ JD generation completed successfully');
@@ -450,9 +464,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         console.error('❌ AI generation failed:', aiError);
         
         // Update draft with error
-        if (savedDraft) {
-          await updateJDDraftStatus(savedDraft.id, 'failed', undefined, aiError.message);
-        }
+        await updateJDDraftStatus(savedDraft.id, 'failed', undefined, aiError.message);
 
         // Show error message with retry option
         const errorMessage: Message = {
@@ -463,7 +475,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           type: 'retry-option',
           metadata: {
             canRetry: true,
-            retryDraftId: savedDraft?.id
+            retryDraftId: savedDraft.id
           }
         };
 
@@ -484,16 +496,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsProcessingJD(false);
-    }
-  };
-
-  // Helper function to extract domain from URL
-  const extractDomain = (url: string): string => {
-    try {
-      const domain = new URL(url).hostname;
-      return domain.replace('www.', '');
-    } catch {
-      return url;
     }
   };
 
@@ -623,6 +625,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             fileExtension
           );
 
+          if (!savedDraft) {
+            throw new Error('Failed to save uploaded file');
+          }
+
           if (savedDraft) {
             await updateJDDraftStatus(savedDraft.id, 'processing');
           }
@@ -648,7 +654,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             timestamp: new Date(),
             type: 'job-description',
             metadata: {
-              jdDraftId: savedDraft?.id,
+              jdDraftId: savedDraft.id,
               jobData: parsedJobData,
             }
           };
@@ -664,7 +670,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             title: 'Refined Job Description',
             content: 'AI-refined job description ready for review',
             data: parsedJobData,
-            draftId: savedDraft?.id
+            draftId: savedDraft.id
           });
 
         } catch (error) {
@@ -857,7 +863,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the updated smart assistant message
+      // Send the UPDATED smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Paste a brief** — e.g., \"We need a project officer for a migration program…\"\n2. **Paste a brief + website/project link** — I'll align the JD with your mission.\n3. **Upload a JD draft** — I'll refine and format it for clarity, DEI, and impact.\n4. **Paste a job post link** — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
@@ -1049,7 +1055,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                               <Link className="w-3 h-3" style={{ color: '#10B981' }} />
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief • Upload • Link
+                              Brief • Brief+Link • Upload • Link
                             </span>
                           </div>
                         )}
