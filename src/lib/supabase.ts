@@ -4,7 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 console.log('🔧 Supabase Config Check:', {
-  url: supabaseUrl ? `✅ Set (${supabaseUrl.substring(0, 20)}...)` : '❌ Missing VITE_SUPABASE_URL',
+  url: supabaseUrl ? `✅ Set (${supabaseUrl.substring(0, 30)}...)` : '❌ Missing VITE_SUPABASE_URL',
   key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing VITE_SUPABASE_ANON_KEY',
   envVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
 });
@@ -23,61 +23,26 @@ if (!hasValidCredentials) {
   console.error('VITE_SUPABASE_URL=https://your-project-id.supabase.co');
   console.error('VITE_SUPABASE_ANON_KEY=your_actual_anon_key');
   console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
-  
-  // For development, we'll create a mock client to prevent crashes
-  console.warn('🚧 Creating mock Supabase client for development');
 }
 
-// Use valid fallback URL that won't cause URL constructor to fail
-const fallbackUrl = 'https://placeholder.supabase.co';
-const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder';
-
-// Create a mock client that prevents network requests when credentials are invalid
-const createMockSupabaseClient = () => {
-  const mockAuth = {
-    signInWithPassword: async () => {
-      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
-    },
-    signUp: async () => {
-      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
-    },
-    signOut: async () => {
-      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
-    },
-    getSession: async () => ({ data: { session: null }, error: null }),
-    getUser: async () => ({ data: { user: null }, error: null }),
-    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } })
-  };
-
-  const mockFrom = () => ({
-    select: () => ({ single: async () => ({ data: null, error: { code: 'MOCK_ERROR' } }) }),
-    insert: async () => ({ data: null, error: { message: 'Supabase not configured' } }),
-    update: async () => ({ data: null, error: { message: 'Supabase not configured' } }),
-    delete: async () => ({ data: null, error: { message: 'Supabase not configured' } })
-  });
-
-  return {
-    auth: mockAuth,
-    from: mockFrom
-  };
-};
-
 // Create Supabase client with proper configuration
-export const supabase = hasValidCredentials 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce'
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'aidjobs-platform'
-        }
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      autoRefreshToken: hasValidCredentials,
+      persistSession: hasValidCredentials,
+      detectSessionInUrl: hasValidCredentials,
+      flowType: 'pkce'
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'aidjobs-platform'
       }
-    })
-  : createMockSupabaseClient() as any;
+    }
+  }
+);
 
 // Test the connection only if we have real credentials
 if (hasValidCredentials) {
@@ -91,7 +56,7 @@ if (hasValidCredentials) {
         details: error
       });
     } else {
-      console.log('✅ Supabase connected successfully');
+      console.log('✅ Supabase connected successfully to:', supabaseUrl);
       if (data.session) {
         console.log('👤 User session found:', data.session.user?.email);
       } else {
@@ -106,8 +71,8 @@ if (hasValidCredentials) {
     });
   });
 } else {
-  console.warn('🚧 Supabase connection skipped - using mock client');
-  console.warn('🔗 To connect to Supabase, click the "Connect to Supabase" button in the top right');
+  console.warn('🚧 Supabase connection skipped - invalid credentials');
+  console.warn('🔗 Please update your .env file with valid Supabase credentials');
 }
 
 // Database types
@@ -138,6 +103,9 @@ export interface UserProgressFlags {
   has_written_cover_letter: boolean;
   has_published_job: boolean;
   has_applied_to_job: boolean;
+  has_started_jd: boolean;
+  has_submitted_jd_inputs: boolean;
+  has_generated_jd: boolean;
   created_at: string;
   updated_at: string;
 }
