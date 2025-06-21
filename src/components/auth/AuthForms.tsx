@@ -49,41 +49,28 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
 
     try {
       if (isLogin) {
+        console.log('🔐 Attempting to sign in with:', { email });
+        
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
           password,
         });
         
-        if (error) throw error;
-        
-        // Verify user profile exists
-        if (data.user) {
-          const { data: profile, error: profileError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', data.user.id)
-            .single();
-          
-          if (profileError && profileError.code === 'PGRST116') {
-            // Profile doesn't exist, create it
-            const { error: createError } = await supabase
-              .from('users')
-              .insert({
-                id: data.user.id,
-                email: data.user.email,
-                full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || '',
-                avatar_url: data.user.user_metadata?.avatar_url || null,
-              });
-            
-            if (createError) {
-              console.error('Error creating user profile:', createError);
-            }
-          }
+        if (error) {
+          console.error('❌ Sign in error:', error);
+          throw error;
         }
+        
+        console.log('✅ Sign in successful:', data.user?.email);
+        
+        // Wait a moment for the auth state to update
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         toast.success('Welcome back to AidJobs!');
         onSuccess?.();
       } else {
+        console.log('📝 Attempting to sign up with:', { email, name });
+        
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
@@ -95,12 +82,18 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
           },
         });
         
-        if (error) throw error;
+        if (error) {
+          console.error('❌ Sign up error:', error);
+          throw error;
+        }
+        
+        console.log('✅ Sign up successful:', data.user?.email);
         
         if (data.user && !data.user.email_confirmed_at) {
           toast.success('Account created! Please check your email to confirm your account.');
         } else {
           toast.success('Account created successfully!');
+          onSuccess?.();
         }
         
         setEmail('');
@@ -108,6 +101,8 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
         setName('');
       }
     } catch (error: any) {
+      console.error('❌ Authentication error:', error);
+      
       let errorMessage = 'An error occurred. Please try again.';
       
       if (error.message?.includes('Invalid login credentials')) {
@@ -122,6 +117,8 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
         errorMessage = 'Please enter a valid email address.';
       } else if (error.message?.includes('Email rate limit exceeded')) {
         errorMessage = 'Too many requests. Please wait a moment before trying again.';
+      } else if (error.message?.includes('Supabase not configured')) {
+        errorMessage = 'Database connection error. Please check your configuration.';
       } else if (error.message) {
         errorMessage = error.message;
       }
