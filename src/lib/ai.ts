@@ -23,10 +23,9 @@ export interface AIResponse {
   };
 }
 
-// Your configured AI models with the correct model names
+// Two reliable AI configurations (removed Qwen3 14B)
 const apiKey1 = import.meta.env.VITE_OPENROUTER_API_KEY_1;
 const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
-const apiKey3 = import.meta.env.VITE_OPENROUTER_API_KEY_3;
 
 const AI_CONFIGS = [
   {
@@ -42,13 +41,6 @@ const AI_CONFIGS = [
     key: apiKey2 || '',
     default_model: 'deepseek/deepseek-r1-0528:free',
     description: 'Secondary AI engine - DeepSeek R1'
-  },
-  {
-    type: 'openrouter' as const,
-    name: 'Qwen3 14B',
-    key: apiKey3 || '',
-    default_model: 'qwen/qwen3-14b-04-28:free',
-    description: 'Tertiary AI engine - Qwen3 14B'
   }
 ];
 
@@ -65,7 +57,7 @@ export function validateAIConfig(): boolean {
 
   if (!hasValidConfig) {
     console.error('❌ No valid OpenRouter API keys found. Please set at least one of:');
-    console.error('   VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2, VITE_OPENROUTER_API_KEY_3');
+    console.error('   VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2');
     console.error('📝 Get your API keys from: https://openrouter.ai/keys');
     return false;
   }
@@ -587,7 +579,7 @@ export async function checkAIStatus(): Promise<{
       return {
         available: false,
         model: 'none',
-        error: 'No valid API keys configured. Please set VITE_OPENROUTER_API_KEY_1, _2, or _3 in your .env file.'
+        error: 'No valid API keys configured. Please set VITE_OPENROUTER_API_KEY_1 or _2 in your .env file.'
       };
     }
 
@@ -660,7 +652,7 @@ export function initializeAI(): void {
   
   if (validConfigs.length === 0) {
     console.warn('⚠️ No valid OpenRouter API keys found in environment variables');
-    console.warn('📝 Please set at least one of: VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2, VITE_OPENROUTER_API_KEY_3');
+    console.warn('📝 Please set at least one of: VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2');
     console.warn('🔗 Get your API keys from: https://openrouter.ai/keys');
     return;
   }
