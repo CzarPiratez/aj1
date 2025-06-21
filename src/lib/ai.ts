@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// Primary AI configuration with DeepSeek Chat V3 as specifically requested
+// Enhanced AI configuration with multiple models and better rate limit handling
 const apiKey1 = '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';
 const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
 
@@ -41,6 +41,21 @@ const AI_CONFIGS = [
     key: apiKey2 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Backup AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
+  },
+  // Add alternative free models as fallbacks
+  {
+    type: 'openrouter' as const,
+    name: 'Llama 3.1 8B Fallback',
+    key: apiKey1 || '',
+    default_model: 'meta-llama/llama-3.1-8b-instruct:free',
+    description: 'Fallback AI engine - Llama 3.1 8B Instruct Free'
+  },
+  {
+    type: 'openrouter' as const,
+    name: 'Mistral 7B Fallback',
+    key: apiKey1 || '',
+    default_model: 'mistralai/mistral-7b-instruct:free',
+    description: 'Fallback AI engine - Mistral 7B Instruct Free'
   }
 ];
 
@@ -126,6 +141,27 @@ function validateAIResponse(response: any): boolean {
   return true;
 }
 
+// Enhanced rate limit detection
+function isRateLimitError(error: any): boolean {
+  if (typeof error === 'string') {
+    return error.includes('429') || 
+           error.includes('rate limit') || 
+           error.includes('Rate limit exceeded') ||
+           error.includes('free-models-per-min') ||
+           error.includes('free-models-per-day');
+  }
+  
+  if (error instanceof Error) {
+    return error.message.includes('429') || 
+           error.message.includes('rate limit') || 
+           error.message.includes('Rate limit exceeded') ||
+           error.message.includes('free-models-per-min') ||
+           error.message.includes('free-models-per-day');
+  }
+  
+  return false;
+}
+
 // Call a single AI model with enhanced error handling and retry logic
 async function callSingleModel(
   config: typeof AI_CONFIGS[0],
@@ -167,12 +203,10 @@ async function callSingleModel(
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = `${config.name} API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`;
       
-      // Check for rate limiting and retry with longer wait times
-      if (response.status === 429 && retryCount < 2) {
-        const waitTime = (retryCount + 1) * 15; // Increased wait time for DeepSeek Chat V3
-        console.log(`⏳ Rate limited, retrying in ${waitTime} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-        return callSingleModel(config, messages, options, retryCount + 1);
+      // Check for rate limiting - don't retry rate limit errors, move to next model
+      if (response.status === 429 || isRateLimitError(errorMessage)) {
+        console.log(`⚠️ ${config.name} is rate limited, skipping to next model...`);
+        throw new Error(errorMessage);
       }
       
       // Check for server errors and retry
@@ -183,7 +217,7 @@ async function callSingleModel(
         return callSingleModel(config, messages, options, retryCount + 1);
       }
       
-      // Only log error if it's not a rate limit (to avoid spam)
+      // Log non-rate-limit errors
       if (response.status !== 429) {
         await logError(
           'AI_API_ERROR',
@@ -220,7 +254,7 @@ async function callSingleModel(
   }
 }
 
-// Core AI function with automatic fallback
+// Core AI function with automatic fallback and better rate limit handling
 export async function callAI(
   messages: AIMessage[],
   options: {
@@ -244,6 +278,7 @@ export async function callAI(
   // Try each AI config in order until one succeeds
   const validConfigs = AI_CONFIGS.filter(config => config.key);
   let lastError: Error | null = null;
+  let rateLimitedModels: string[] = [];
 
   for (const config of validConfigs) {
     try {
@@ -254,17 +289,40 @@ export async function callAI(
       });
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Unknown error');
-      console.log(`⚠️ ${config.name} failed, trying next model...`);
+      
+      // Track rate limited models
+      if (isRateLimitError(lastError.message)) {
+        rateLimitedModels.push(config.name);
+        console.log(`⚠️ ${config.name} is rate limited, trying next model...`);
+      } else {
+        console.log(`⚠️ ${config.name} failed with non-rate-limit error, trying next model...`);
+      }
       continue;
     }
   }
 
-  // All models failed
-  const errorMessage = 'All AI models are temporarily unavailable. Please try again in a few minutes.';
+  // All models failed - provide helpful error message
+  let errorMessage = 'All AI models are temporarily unavailable.';
+  
+  if (rateLimitedModels.length === validConfigs.length) {
+    errorMessage = `All AI models have hit their rate limits. This is common with free tier usage. Please try again in a few minutes, or consider upgrading your OpenRouter account for higher limits.
+
+Rate limited models: ${rateLimitedModels.join(', ')}
+
+To resolve this:
+1. Wait a few minutes and try again
+2. Add credits to your OpenRouter account for higher limits
+3. Contact support if the issue persists`;
+  } else if (rateLimitedModels.length > 0) {
+    errorMessage = `Some AI models are rate limited, others failed with errors. Please try again in a few minutes.
+
+Rate limited: ${rateLimitedModels.join(', ')}
+Last error: ${lastError?.message}`;
+  }
   
   await logError(
     'AI_ALL_MODELS_FAILED',
-    `All ${validConfigs.length} models failed. Last error: ${lastError?.message}`,
+    `All ${validConfigs.length} models failed. Rate limited: ${rateLimitedModels.length}. Last error: ${lastError?.message}`,
     'callAI'
   );
   
@@ -643,7 +701,7 @@ export async function checkAIStatus(): Promise<{
       return {
         available: false,
         model: 'none',
-        error: 'All AI models are currently unavailable',
+        error: 'All AI models are currently unavailable or rate limited',
         workingModels,
         failedModels
       };
@@ -686,8 +744,9 @@ export function initializeAI(): void {
     return;
   }
   
-  console.log('✅ AI Service initialized with DeepSeek Chat V3 (deepseek/deepseek-chat-v3-0324:free)');
+  console.log('✅ AI Service initialized with multiple fallback models');
   console.log(`🎯 Primary model: ${validConfigs[0].name} (${validConfigs[0].default_model})`);
+  console.log(`🔄 Fallback models: ${validConfigs.length - 1} available`);
   
   // Test the connection (but don't block initialization)
   checkAIStatus().then(status => {
@@ -697,7 +756,7 @@ export function initializeAI(): void {
         console.log(`✅ Working models: ${status.workingModels.join(', ')}`);
       }
       if (status.failedModels && status.failedModels.length > 0) {
-        console.log(`⚠️ Failed models: ${status.failedModels.join(', ')}`);
+        console.log(`⚠️ Failed/Rate-limited models: ${status.failedModels.join(', ')}`);
       }
     } else {
       console.log('🔴 AI Service status:', status.error);
