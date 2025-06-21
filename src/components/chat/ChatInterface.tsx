@@ -26,11 +26,7 @@ import {
   checkJDGenerationStatus,
   classifyJDInput,
   extractUrlFromInput,
-  extractBriefFromInput,
-  refineUploadedJD,
-  generateJDFromBrief,
-  generateJDFromBriefAndLink,
-  rewriteJDFromURL
+  extractBriefFromInput
 } from '@/lib/jobDescriptionGenerator';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
@@ -101,11 +97,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   }, [input]);
 
-  // Check AI availability on component mount
+  // Check AI status on mount
   useEffect(() => {
     checkAIStatus().then(status => {
       setAiAvailable(status.available);
-      console.log('🤖 AI Status:', status.available ? 'Available' : 'Unavailable');
     });
   }, []);
 
@@ -143,103 +138,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  // Helper function to save JD input to database
-  const saveJDInputToDatabase = async (inputType: string, inputSummary: string, content?: string, url?: string, fileName?: string, fileType?: string) => {
-    if (!profile?.id) return null;
-
-    try {
-      console.log('💾 Saving JD input to database:', { inputType, inputSummary: inputSummary.substring(0, 50) + '...' });
-      
-      const { data, error } = await supabase
-        .from('jd_drafts')
-        .insert({
-          user_id: profile.id,
-          input_type: inputType,
-          input_summary: inputSummary,
-          content: content,
-          url: url,
-          file_name: fileName,
-          file_type: fileType,
-          status: 'pending'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Error saving JD input:', error);
-        toast.error('Failed to save job description input');
-        return null;
-      }
-
-      console.log('✅ JD input saved to database:', data.id);
-      return data;
-    } catch (error) {
-      console.error('❌ Error in saveJDInputToDatabase:', error);
-      toast.error('Failed to save job description input');
-      return null;
-    }
-  };
-
-  // Helper function to update JD draft status
-  const updateJDDraftStatus = async (draftId: string, status: string, generatedJD?: string, errorMessage?: string) => {
-    try {
-      const updateData: any = { status };
-      
-      if (generatedJD) {
-        updateData.generated_jd = generatedJD;
-      }
-      
-      if (errorMessage) {
-        updateData.error_message = errorMessage;
-      }
-
-      const { error } = await supabase
-        .from('jd_drafts')
-        .update(updateData)
-        .eq('id', draftId);
-
-      if (error) {
-        console.error('❌ Error updating JD draft status:', error);
-        return false;
-      }
-
-      console.log(`✅ JD draft ${draftId} status updated to: ${status}`);
-      return true;
-    } catch (error) {
-      console.error('❌ Error in updateJDDraftStatus:', error);
-      return false;
-    }
-  };
-
-  // Helper function to extract file content
-  const extractFileContent = async (file: File): Promise<string> => {
-    try {
-      const text = await file.text();
-      return text.substring(0, 5000); // Limit to first 5000 characters
-    } catch (error) {
-      throw new Error('Failed to extract content from file');
-    }
-  };
-
-  // Validate file upload for JD processing
-  const isValidJDFile = (file: File): boolean => {
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
-    const allowedExtensions = ['pdf', 'doc', 'docx', 'txt'];
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    
-    return allowedTypes.includes(file.type) || (fileExtension && allowedExtensions.includes(fileExtension));
-  };
-
-  // Helper function to extract domain from URL
-  const extractDomain = (url: string): string => {
-    try {
-      const domain = new URL(url).hostname;
-      return domain.replace('www.', '');
-    } catch {
-      return url;
-    }
-  };
-
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -271,35 +169,41 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
     setIsTyping(true);
 
-    // Try AI service first if available, otherwise use fallback
+    // Use AI service for enhanced responses if available
     try {
-      let aiResponse: string;
-      
       if (aiAvailable) {
         const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-        aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+        const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+        
+        const responseMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: aiResponse,
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, responseMessage]);
       } else {
-        // Use enhanced fallback that doesn't depend on AI
-        aiResponse = generateEnhancedFallbackResponse(currentInput);
+        // Fallback to simple response when AI is not available
+        const responseMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: generateSimpleResponse(currentInput),
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+
+        setMessages(prev => [...prev, responseMessage]);
       }
       
-      const responseMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: aiResponse,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, responseMessage]);
       updateMainContent(currentInput);
       await updateProgressBasedOnInput(currentInput);
     } catch (error) {
       console.error('Error getting AI response:', error);
       
-      // Fallback to enhanced response
+      // Fallback to simple response
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: generateEnhancedFallbackResponse(currentInput),
+        content: generateSimpleResponse(currentInput),
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -313,266 +217,122 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   const handleJDInputResponse = async (userInput: string) => {
-    console.log('🎯 Processing JD input response:', userInput.substring(0, 100) + '...');
+    console.log('🎯 Processing JD input response:', userInput);
     setIsProcessingJD(true);
     setAwaitingJDInput(false);
 
     try {
-      // Update progress flag for input submission
-      await updateFlag('has_submitted_jd_inputs', true);
-
       // Classify the input type
       const inputType = classifyJDInput(userInput);
       console.log('🔍 Input classified as:', inputType);
 
-      // Validate input based on type
-      if (inputType === 'brief_only') {
-        // For brief_only, we need to check if it has enough context
-        const briefText = extractBriefFromInput(userInput);
-        const wordCount = briefText.split(/\s+/).filter(word => word.length > 0).length;
-        
-        if (wordCount < 10) {
-          const clarificationMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: `I need a bit more detail to create a comprehensive job description. Please provide:\n\n• **Brief + website/project link** (e.g., "We need a field coordinator for a migration project in Kenya. Our organization: https://example.org")\n\n• **Or a more detailed brief** with organization context, role requirements, and responsibilities\n\nThis helps me create a mission-aligned JD that attracts the right candidates.`,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'jd-request'
-          };
-
-          setMessages(prev => [...prev, clarificationMessage]);
-          setAwaitingJDInput(true);
-          setIsProcessingJD(false);
-          return;
-        }
-      }
-
-      // Save input to database
-      let savedDraft = null;
-      const url = extractUrlFromInput(userInput);
-      const brief = extractBriefFromInput(userInput);
-      
-      switch (inputType) {
-        case 'brief_with_link':
-          savedDraft = await saveJDInputToDatabase('brief_with_link', userInput.substring(0, 500), userInput, url);
-          break;
-        case 'link_only':
-          savedDraft = await saveJDInputToDatabase('link_only', `Job posting from: ${url}`, userInput, url);
-          break;
-        case 'brief_only':
-          savedDraft = await saveJDInputToDatabase('brief_only', userInput.substring(0, 500), userInput);
-          break;
-      }
-
-      if (!savedDraft) {
-        throw new Error('Failed to save job description input');
-      }
-
-      // Show appropriate processing message based on input type
       let processingMessage: Message;
-      
+
+      // Create appropriate processing message based on input type
       switch (inputType) {
-        case 'brief_with_link':
-          processingMessage = {
-            id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${extractDomain(url!)}\n🤖 ${aiAvailable ? 'Generating a mission-aligned job description with AI...' : 'Creating a job description based on your input...'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-          break;
-          
-        case 'link_only':
-          processingMessage = {
-            id: (Date.now() + 1).toString(),
-            content: `🔗 Great! I'll fetch the existing job posting from: ${extractDomain(url!)}\n\n🤖 ${aiAvailable ? 'Rewriting it with better clarity, DEI language, and nonprofit alignment...' : 'Processing the job posting...'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-          break;
-          
         case 'brief_only':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your detailed job brief.\n\n🤖 ${aiAvailable ? 'Creating a comprehensive, professional job description with AI...' : 'Creating a job description based on your brief...'}`,
+            content: `✅ Starting your JD based on your brief...\n\n🤖 Creating a comprehensive job description that's mission-aligned and ready for posting...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
           break;
-          
+        case 'brief_with_link':
+          const url = extractUrlFromInput(userInput);
+          const brief = extractBriefFromInput(userInput);
+          processingMessage = {
+            id: (Date.now() + 1).toString(),
+            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Analyzing: ${url}\n📝 Brief: "${brief.substring(0, 100)}..."\n\n🤖 Creating a mission-aligned JD that reflects your organization's work...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          break;
+        case 'link_only':
+          const jobUrl = extractUrlFromInput(userInput);
+          processingMessage = {
+            id: (Date.now() + 1).toString(),
+            content: `🔗 Fetching your old job post and rewriting it now...\n\nSource: ${jobUrl}\n\n🤖 Creating an improved version with better clarity, DEI language, and nonprofit alignment...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          break;
         default:
           throw new Error('Unable to classify input type');
       }
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Update draft status to processing
-      await updateJDDraftStatus(savedDraft.id, 'processing');
-
-      // Generate JD using appropriate method based on input type and AI availability
-      let generatedJD: string;
-      
-      try {
-        if (aiAvailable) {
-          // Use AI-powered generation
-          switch (inputType) {
-            case 'brief_with_link':
-              generatedJD = await generateJDFromBriefAndLink(userInput);
-              break;
-            case 'link_only':
-              if (!url) throw new Error('No URL found in input');
-              generatedJD = await rewriteJDFromURL(url);
-              break;
-            case 'brief_only':
-              generatedJD = await generateJDFromBrief(userInput);
-              break;
-            default:
-              throw new Error('Unknown input type');
-          }
-        } else {
-          // Use fallback generation without AI
-          generatedJD = generateFallbackJD(inputType, userInput, url);
-        }
-
-        // Update draft with generated JD
-        await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
-
-        // Parse the generated JD into structured data
-        const parsedJobData = parseJobDescription(generatedJD);
-
-        // Update progress flag
-        await updateFlag('has_generated_jd', true);
-
-        // Create final message with job description
-        const jobMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          content: generatedJD,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'job-description',
-          metadata: {
-            jdDraftId: savedDraft.id,
-            jobData: parsedJobData,
-          }
-        };
-
-        // Replace processing message with final result
-        setMessages(prev => prev.map(msg => 
-          msg.id === processingMessage.id ? jobMessage : msg
-        ));
-
-        // Show success message
-        const successMessage: Message = {
-          id: (Date.now() + 3).toString(),
-          content: `🎉 Here's your job description! ${aiAvailable ? 'You can now refine, update tone, or view SDG alignment.' : 'This is a basic template - connect AI for advanced features.'} The job description is ready for review and publishing.`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'progress'
-        };
-
-        setMessages(prev => [...prev, successMessage]);
-
-        // Show the structured JD in the right panel
-        onContentChange({
-          type: 'job-description',
-          title: 'Generated Job Description',
-          content: aiAvailable ? 'AI-generated job description ready for review' : 'Template job description ready for customization',
-          data: parsedJobData,
-          draftId: savedDraft.id
-        });
-
-        console.log('✅ JD generation completed successfully');
-
-      } catch (aiError: any) {
-        console.error('❌ AI generation failed:', aiError);
-        
-        // If AI fails, try fallback generation
-        if (aiAvailable) {
-          try {
-            console.log('🔄 AI failed, trying fallback generation...');
-            generatedJD = generateFallbackJD(inputType, userInput, url);
-            
-            // Update draft with fallback JD
-            await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
-
-            // Parse the generated JD into structured data
-            const parsedJobData = parseJobDescription(generatedJD);
-
-            // Update progress flag
-            await updateFlag('has_generated_jd', true);
-
-            // Create final message with job description
-            const jobMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              content: generatedJD,
-              sender: 'assistant',
-              timestamp: new Date(),
-              type: 'job-description',
-              metadata: {
-                jdDraftId: savedDraft.id,
-                jobData: parsedJobData,
-              }
-            };
-
-            // Replace processing message with final result
-            setMessages(prev => prev.map(msg => 
-              msg.id === processingMessage.id ? jobMessage : msg
-            ));
-
-            // Show success message with fallback note
-            const successMessage: Message = {
-              id: (Date.now() + 3).toString(),
-              content: "🎉 Here's your job description! I used a template approach since AI is currently unavailable. You can customize it further as needed.",
-              sender: 'assistant',
-              timestamp: new Date(),
-              type: 'progress'
-            };
-
-            setMessages(prev => [...prev, successMessage]);
-
-            // Show the structured JD in the right panel
-            onContentChange({
-              type: 'job-description',
-              title: 'Generated Job Description',
-              content: 'Template job description ready for customization',
-              data: parsedJobData,
-              draftId: savedDraft.id
-            });
-
-            console.log('✅ Fallback JD generation completed successfully');
-            return;
-          } catch (fallbackError) {
-            console.error('❌ Fallback generation also failed:', fallbackError);
-          }
-        }
-        
-        // Update draft with error
-        await updateJDDraftStatus(savedDraft.id, 'failed', undefined, aiError.message);
-
-        // Show error message with retry option
-        const errorMessage: Message = {
-          id: (Date.now() + 3).toString(),
-          content: `❌ ${aiError instanceof Error ? aiError.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'retry-option',
-          metadata: {
-            canRetry: true,
-            retryDraftId: savedDraft.id
-          }
-        };
-
-        setMessages(prev => [...prev, errorMessage]);
+      // Generate JD using the appropriate method
+      let result;
+      if (aiAvailable) {
+        // Use AI generation
+        result = await generateInitialJD(userInput, profile.id);
+      } else {
+        // Use fallback generation
+        result = await generateFallbackJD(userInput, profile.id, inputType);
       }
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to generate job description');
+      }
+
+      // Parse the generated JD into structured data
+      const parsedJobData = parseJobDescription(result.generatedJD!);
+
+      // Create final message with job description
+      const jobMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: result.generatedJD!,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'job-description',
+        metadata: {
+          jdDraftId: result.jdDraft!.id,
+          jobData: parsedJobData,
+        }
+      };
+
+      // Replace processing message with final result
+      setMessages(prev => prev.map(msg => 
+        msg.id === processingMessage.id ? jobMessage : msg
+      ));
+
+      // Show success message
+      const successMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: "🎉 Here's your job description! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'progress'
+      };
+
+      setMessages(prev => [...prev, successMessage]);
+
+      // Show the structured JD in the right panel
+      onContentChange({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        draftId: result.jdDraft!.id
+      });
+
+      console.log('✅ JD generation completed successfully');
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
-      // Show error message
+      // Show error message with retry option
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
-        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `❌ ${error instanceof Error ? error.message : 'Sorry, I encountered an error while generating your job description. Please try again in a few minutes.'}\n\nWould you like me to try again now?`,
         sender: 'assistant',
         timestamp: new Date(),
+        type: 'retry-option',
+        metadata: {
+          canRetry: true
+        }
       };
 
       setMessages(prev => [...prev, errorMessage]);
@@ -581,109 +341,102 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  // Generate fallback JD when AI is not available
-  const generateFallbackJD = (inputType: string, userInput: string, url?: string | null): string => {
-    const brief = extractBriefFromInput(userInput);
-    const domain = url ? extractDomain(url) : 'Organization';
-    
-    // Extract basic info from the brief
-    const briefLower = brief.toLowerCase();
-    let jobTitle = 'Program Officer';
-    let sector = 'Development';
-    
-    // Try to extract job title
-    const titleKeywords = {
-      'coordinator': 'Program Coordinator',
-      'manager': 'Program Manager', 
-      'officer': 'Program Officer',
-      'specialist': 'Technical Specialist',
-      'expert': 'Technical Expert',
-      'director': 'Program Director',
-      'assistant': 'Program Assistant'
-    };
-    
-    for (const [keyword, title] of Object.entries(titleKeywords)) {
-      if (briefLower.includes(keyword)) {
-        jobTitle = title;
-        break;
+  // Fallback JD generation when AI is not available
+  const generateFallbackJD = async (input: string, userId: string, inputType: string): Promise<{
+    success: boolean;
+    jdDraft?: any;
+    generatedJD?: string;
+    error?: string;
+  }> => {
+    try {
+      // Create draft record
+      const { data: draft, error: draftError } = await supabase
+        .from('jd_drafts')
+        .insert({
+          user_id: userId,
+          input_type: inputType,
+          input_summary: input.substring(0, 500),
+          content: input,
+          status: 'completed'
+        })
+        .select()
+        .single();
+
+      if (draftError) {
+        throw new Error('Failed to save job description request');
       }
+
+      // Generate template-based JD
+      const templateJD = generateTemplateJD(input, inputType);
+
+      // Update draft with generated JD
+      await supabase
+        .from('jd_drafts')
+        .update({ generated_jd: templateJD })
+        .eq('id', draft.id);
+
+      // Update user progress
+      await updateFlag('has_submitted_jd_inputs', true);
+      await updateFlag('has_generated_jd', true);
+
+      return {
+        success: true,
+        jdDraft: { ...draft, generated_jd: templateJD },
+        generatedJD: templateJD
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate job description'
+      };
     }
+  };
+
+  // Generate template-based JD when AI is unavailable
+  const generateTemplateJD = (input: string, inputType: string): string => {
+    const brief = extractBriefFromInput(input);
+    const url = extractUrlFromInput(input);
     
-    // Try to extract sector
-    const sectorKeywords = {
-      'health': 'Health',
-      'education': 'Education',
-      'environment': 'Environment',
-      'humanitarian': 'Humanitarian',
-      'migration': 'Migration & Displacement',
-      'gender': 'Gender & Inclusion',
-      'water': 'Water & Sanitation'
-    };
-    
-    for (const [keyword, sectorName] of Object.entries(sectorKeywords)) {
-      if (briefLower.includes(keyword)) {
-        sector = sectorName;
-        break;
-      }
-    }
+    return `# Job Opportunity
 
-    return `# ${jobTitle}
+## About the Role
+${brief || 'We are seeking a dedicated professional to join our mission-driven team and contribute to meaningful social impact work.'}
 
-## About the Organization
-${domain} is a mission-driven organization working to create positive impact in the ${sector.toLowerCase()} sector. We are committed to sustainable development and meaningful change in the communities we serve.
-
-## Role Overview
-We are seeking a dedicated ${jobTitle} to join our team and contribute to our mission of creating lasting positive impact. This role offers an opportunity to work on meaningful projects that make a real difference in people's lives.
-
-**Original Brief:** ${brief}
+## Organization Context
+${url ? `Learn more about our organization: ${url}` : 'We are a mission-driven organization working to create positive change in our communities.'}
 
 ## Key Responsibilities
-- Lead and coordinate program activities in alignment with organizational goals
-- Develop and implement project strategies and work plans
-- Monitor and evaluate program progress and impact
-- Build and maintain relationships with key stakeholders and partners
-- Ensure compliance with donor requirements and organizational policies
-- Prepare regular reports and documentation
-- Support capacity building initiatives within the team and with partners
+- Lead and support program implementation and delivery
+- Collaborate with team members and stakeholders
+- Monitor and evaluate program outcomes and impact
+- Contribute to strategic planning and organizational development
+- Maintain accurate records and reporting
 
 ## Required Qualifications
-- Bachelor's degree in relevant field (Master's preferred)
-- Minimum 3-5 years of experience in ${sector.toLowerCase()} or related sector
-- Strong project management and coordination skills
-- Excellent written and verbal communication skills
-- Experience working with diverse stakeholders and communities
-- Proficiency in English (additional languages an asset)
-- Strong analytical and problem-solving abilities
+- Bachelor's degree or equivalent experience
+- 2-3 years of relevant experience in nonprofit or development sector
+- Strong communication and interpersonal skills
+- Demonstrated commitment to social impact and mission-driven work
+- Ability to work collaboratively in a team environment
 
 ## Preferred Qualifications
-- Experience in nonprofit or development sector
-- Knowledge of monitoring and evaluation frameworks
-- Experience with donor reporting and compliance
-- Cross-cultural competency and sensitivity
-- Computer literacy including MS Office and project management tools
-
-## Working Conditions
-- Location: ${url ? `Based on ${domain} operations` : 'To be determined'}
-- Contract Type: Full-time
-- Travel: May require domestic and/or international travel
-- Work Environment: Collaborative team environment with opportunities for professional growth
+- Experience in program management or coordination
+- Knowledge of monitoring and evaluation practices
+- Multilingual capabilities
+- Experience working in diverse, multicultural environments
 
 ## What We Offer
 - Competitive salary commensurate with experience
 - Comprehensive benefits package
 - Professional development opportunities
-- Meaningful work with direct impact on communities
+- Meaningful work with direct social impact
 - Collaborative and inclusive work environment
-- Opportunities for career advancement
 
 ## How to Apply
-Please submit your CV and a cover letter explaining your interest in this position and relevant experience. Applications should be sent to the hiring team with the subject line "${jobTitle} Application - [Your Name]".
-
-We are an equal opportunity employer committed to diversity and inclusion. We encourage applications from all qualified candidates regardless of race, gender, age, religion, sexual orientation, or disability status.
+Please submit your CV and a cover letter explaining your interest in this role and how your experience aligns with our mission.
 
 ---
-
-*This job description was generated based on your input. ${aiAvailable ? 'AI services are currently unavailable, so this is a template version.' : 'Connect AI services for more advanced and customized job descriptions.'}*`;
+*This job description was generated using template-based content${!aiAvailable ? ' (AI currently offline)' : ''}. Please review and customize as needed for your specific requirements.*`;
   };
 
   const handleJDRetry = async (draftId?: string) => {
@@ -694,7 +447,7 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
     try {
       const processingMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `🔄 ${aiAvailable ? 'Retrying job description generation with AI...' : 'Retrying with template generation...'}\n\n🤖 ${aiAvailable ? 'Generating your professional JD...' : 'Creating your job description...'}`,
+        content: `🔄 Retrying job description generation${aiAvailable ? ' with AI' : ' using templates'}...\n\n🤖 Generating your professional JD...`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -707,7 +460,7 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
         result = await retryJDGeneration(draftId, profile.id);
       } else {
         // This shouldn't happen, but handle gracefully
-        throw new Error('No draft ID provided for retry or AI unavailable');
+        throw new Error('No draft ID provided for retry');
       }
 
       if (!result.success) {
@@ -781,17 +534,18 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
 
     // Check if we're in JD mode and this is a supported file type
     if (awaitingJDInput) {
-      if (isValidJDFile(file)) {
+      const allowedTypes = ['doc', 'docx', 'pdf', 'txt'];
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension && allowedTypes.includes(fileExtension)) {
         // Process as JD file upload
         setIsProcessingJD(true);
         setAwaitingJDInput(false);
 
         try {
-          await updateFlag('has_submitted_jd_inputs', true);
-
           const processingMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I received your file: "${file.name}"\n\n${aiAvailable ? 'I\'m extracting the content and improving it with better structure, DEI language, and nonprofit alignment...' : 'I\'m processing your file and creating an improved version...'}`,
+            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -800,56 +554,31 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
 
           // Extract file content
           const fileContent = await extractFileContent(file);
-          const fileExtension = file.name.split('.').pop()?.toLowerCase();
-
-          // Save to database
-          const savedDraft = await saveJDInputToDatabase(
-            'upload', 
-            `Uploaded file: ${file.name}`, 
-            fileContent, 
-            undefined, 
-            file.name, 
-            fileExtension
-          );
-
-          if (!savedDraft) {
-            throw new Error('Failed to save uploaded file');
-          }
-
-          if (savedDraft) {
-            await updateJDDraftStatus(savedDraft.id, 'processing');
-          }
 
           // Generate improved JD
-          let generatedJD: string;
-          
+          let result;
           if (aiAvailable) {
-            // Use AI-powered refinement
-            generatedJD = await refineUploadedJD(fileContent, file.name);
+            result = await generateInitialJD(fileContent, profile.id);
           } else {
-            // Use fallback refinement
-            generatedJD = generateFallbackRefinedJD(fileContent, file.name);
+            result = await generateFallbackJD(fileContent, profile.id, 'upload');
           }
 
-          // Update draft with generated JD
-          if (savedDraft) {
-            await updateJDDraftStatus(savedDraft.id, 'completed', generatedJD);
+          if (!result.success) {
+            throw new Error(result.error || 'Failed to process uploaded file');
           }
 
           // Parse the generated JD into structured data
-          const parsedJobData = parseJobDescription(generatedJD);
-          
-          await updateFlag('has_generated_jd', true);
+          const parsedJobData = parseJobDescription(result.generatedJD!);
 
           // Create final message with improved job description
           const jobMessage: Message = {
             id: (Date.now() + 2).toString(),
-            content: generatedJD,
+            content: result.generatedJD!,
             sender: 'assistant',
             timestamp: new Date(),
             type: 'job-description',
             metadata: {
-              jdDraftId: savedDraft.id,
+              jdDraftId: result.jdDraft!.id,
               jobData: parsedJobData,
             }
           };
@@ -862,10 +591,10 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
           // Show the structured JD in the right panel
           onContentChange({
             type: 'job-description',
-            title: 'Refined Job Description',
-            content: aiAvailable ? 'AI-refined job description ready for review' : 'Refined job description ready for review',
+            title: 'Generated Job Description',
+            content: 'AI-generated job description ready for review',
             data: parsedJobData,
-            draftId: savedDraft.id
+            draftId: result.jdDraft!.id
           });
 
         } catch (error) {
@@ -873,7 +602,7 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
           
           const errorMessage: Message = {
             id: (Date.now() + 3).toString(),
-            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            content: `❌ ${error instanceof Error ? error.message : 'Sorry, I couldn\'t process that file. Please try again or use a different format.'}`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -883,17 +612,6 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
           setIsProcessingJD(false);
         }
 
-        e.target.value = '';
-        return;
-      } else {
-        // Invalid file type for JD processing
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          content: 'For job description files, please upload PDF, Word (.doc/.docx), or text files only.',
-          sender: 'assistant',
-          timestamp: new Date(),
-        };
-        setMessages(prev => [...prev, errorMessage]);
         e.target.value = '';
         return;
       }
@@ -942,47 +660,25 @@ We are an equal opportunity employer committed to diversity and inclusion. We en
     e.target.value = '';
   };
 
-  // Generate fallback refined JD when AI is not available
-  const generateFallbackRefinedJD = (fileContent: string, fileName: string): string => {
-    // Basic cleanup and formatting
-    let refined = fileContent;
-    
-    // Remove excessive whitespace
-    refined = refined.replace(/\s+/g, ' ').trim();
-    
-    // Add basic structure if missing
-    if (!refined.includes('Responsibilities') && !refined.includes('Duties')) {
-      refined += '\n\n## Key Responsibilities\n- [Please add specific responsibilities based on the role]';
+  // Helper function to extract file content
+  const extractFileContent = async (file: File): Promise<string> => {
+    try {
+      const text = await file.text();
+      return text.substring(0, 5000); // Limit to first 5000 characters
+    } catch (error) {
+      throw new Error('Failed to extract content from file');
     }
-    
-    if (!refined.includes('Qualifications') && !refined.includes('Requirements')) {
-      refined += '\n\n## Required Qualifications\n- [Please add required qualifications and experience]';
-    }
-    
-    if (!refined.includes('Apply') && !refined.includes('Contact')) {
-      refined += '\n\n## How to Apply\nPlease submit your CV and cover letter to the hiring team.';
-    }
-    
-    return `# Refined Job Description
-*Processed from: ${fileName}*
-
-${refined}
-
----
-
-*This job description has been processed and formatted. ${aiAvailable ? 'AI services are currently unavailable for advanced refinement.' : 'Connect AI services for advanced refinement and optimization.'}*`;
   };
 
-  // Enhanced fallback response that doesn't depend on AI
-  const generateEnhancedFallbackResponse = (userInput: string): string => {
+  const generateSimpleResponse = (userInput: string): string => {
     const input = userInput.toLowerCase();
     
     if (input.includes('upload') && input.includes('cv')) {
       return "I'll help you upload and analyze your CV. Please select the file you'd like to upload, and I'll extract key information like skills, experience, and qualifications to help match you with relevant nonprofit opportunities.";
     } else if (input.includes('post a job') || input.includes('generate') && input.includes('job description')) {
-      return "I can help you create a job description! Please share:\n\n• A brief description of the role you need\n• Your organization's website (optional)\n• Or upload an existing job description to refine\n\nI'll create a professional, mission-aligned job description for you.";
+      return "Please share the link to your organizational website or the project this role supports. I'll use that to generate a mission-aligned JD.";
     } else if (input.includes('search') && input.includes('ai')) {
-      return "I'll help you search for jobs that match your profile and preferences. I can analyze job descriptions, requirements, and company cultures to find the best opportunities for you in the nonprofit sector.";
+      return "I'll use AI to search for jobs that match your profile and preferences. I can analyze job descriptions, requirements, and company cultures to find the best opportunities for you.";
     } else if (input.includes('manual') && input.includes('search')) {
       return "I'll help you set up manual job search filters and criteria. You can browse through job listings with custom filters for location, salary, organization type, and more.";
     } else if (input.includes('match') && input.includes('cv')) {
@@ -1000,7 +696,7 @@ ${refined}
     } else if (input.includes('refine') && input.includes('cover letter')) {
       return "I'll help you polish and refine your existing cover letter to make it more impactful, personalized, and aligned with the specific role you're applying for.";
     } else {
-      return `I'm here to help with all aspects of nonprofit recruitment and career development. ${aiAvailable ? '' : 'Note: AI services are currently unavailable, but I can still assist with basic functions.'} What specific task would you like to focus on today?`;
+      return "I'm here to help with all aspects of nonprofit recruitment and career development. What specific task would you like to focus on today?";
     }
   };
 
@@ -1090,10 +786,10 @@ ${refined}
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the UPDATED smart assistant message (this is the key fix!)
+      // Send the NEW smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Paste a brief** — e.g., \"We need a project officer for a migration program…\"\n2. **Paste a brief + website/project link** — I'll align the JD with your mission.\n3. **Upload a JD draft** — I'll refine and format it for clarity, DEI, and impact.\n4. **Paste a job post link** — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
+        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. Paste a brief — e.g., \"We need a project officer for a migration program…\"\n2. Paste a brief + website/project link — I'll align the JD with your mission.\n3. Upload a JD draft — I'll refine and format it for clarity, DEI, and impact.\n4. Paste a job post link — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -1268,7 +964,7 @@ ${refined}
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
-                              {aiAvailable ? 'Generating with AI...' : 'Creating template...'}
+                              {aiAvailable ? 'Generating with AI...' : 'Generating with templates...'}
                             </span>
                           </div>
                         )}
@@ -1282,7 +978,7 @@ ${refined}
                               <Link className="w-3 h-3" style={{ color: '#10B981' }} />
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief • Brief+Link • Upload • Link
+                              Brief • Upload • Link
                             </span>
                           </div>
                         )}
@@ -1367,7 +1063,7 @@ ${refined}
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            {isProcessingJD ? (aiAvailable ? 'Generating job description...' : 'Creating template...') : 'AI is thinking...'}
+                            {isProcessingJD ? 'Generating job description...' : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -1413,7 +1109,7 @@ ${refined}
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Paste a brief, brief + website link, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -1501,15 +1197,12 @@ ${refined}
               </div>
 
               <div className="flex items-center space-x-1 text-xs" style={{ color: '#66615C' }}>
+                {!aiAvailable && (
+                  <span className="mr-2 text-xs" style={{ color: '#F59E0B' }}>AI Offline</span>
+                )}
                 <span>{input.length}</span>
                 <span>/</span>
                 <span>2000</span>
-                {!aiAvailable && (
-                  <>
-                    <span>•</span>
-                    <span className="text-orange-500">AI Offline</span>
-                  </>
-                )}
               </div>
             </div>
           </motion.div>
@@ -1519,7 +1212,7 @@ ${refined}
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide brief, brief+link, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
