@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// Two reliable AI configurations (removed Qwen3 14B)
+// Primary AI configuration with DeepSeek Chat V3
 const apiKey1 = import.meta.env.VITE_OPENROUTER_API_KEY_1;
 const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
 
@@ -33,14 +33,14 @@ const AI_CONFIGS = [
     name: 'DeepSeek Chat V3',
     key: apiKey1 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
-    description: 'Primary AI engine - DeepSeek Chat V3'
+    description: 'Primary AI engine - DeepSeek Chat V3 (Free)'
   },
   {
     type: 'openrouter' as const,
-    name: 'DeepSeek R1',
+    name: 'DeepSeek Chat V3 Backup',
     key: apiKey2 || '',
-    default_model: 'deepseek/deepseek-r1-0528:free',
-    description: 'Secondary AI engine - DeepSeek R1'
+    default_model: 'deepseek/deepseek-chat-v3-0324:free',
+    description: 'Backup AI engine - DeepSeek Chat V3 (Free)'
   }
 ];
 
@@ -112,7 +112,7 @@ function validateAIResponse(response: any): boolean {
   return true;
 }
 
-// Call a single AI model with error handling and retry logic
+// Call a single AI model with enhanced error handling and retry logic
 async function callSingleModel(
   config: typeof AI_CONFIGS[0],
   messages: AIMessage[],
@@ -153,10 +153,19 @@ async function callSingleModel(
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = `${config.name} API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`;
       
-      // Check for rate limiting
+      // Check for rate limiting and retry
       if (response.status === 429 && retryCount < 2) {
-        console.log(`⏳ Rate limited, retrying in ${(retryCount + 1) * 2} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
+        const waitTime = (retryCount + 1) * 2;
+        console.log(`⏳ Rate limited, retrying in ${waitTime} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+        return callSingleModel(config, messages, options, retryCount + 1);
+      }
+      
+      // Check for server errors and retry
+      if (response.status >= 500 && retryCount < 1) {
+        const waitTime = 3;
+        console.log(`🔄 Server error, retrying in ${waitTime} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
         return callSingleModel(config, messages, options, retryCount + 1);
       }
       
