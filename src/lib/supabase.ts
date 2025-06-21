@@ -22,6 +22,7 @@ if (!hasValidCredentials) {
   console.error('Please check your .env file and ensure you have:');
   console.error('VITE_SUPABASE_URL=https://your-project-id.supabase.co');
   console.error('VITE_SUPABASE_ANON_KEY=your_actual_anon_key');
+  console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
   
   // For development, we'll create a mock client to prevent crashes
   console.warn('🚧 Creating mock Supabase client for development');
@@ -52,14 +53,29 @@ export const supabase = createClient(
 
 // Test the connection only if we have real credentials
 if (hasValidCredentials) {
+  console.log('🔄 Testing Supabase connection...');
   supabase.auth.getSession().then(({ data, error }) => {
     if (error) {
-      console.error('❌ Supabase connection error:', error.message);
+      console.error('❌ Supabase connection error:', {
+        message: error.message,
+        status: error.status,
+        statusText: error.statusText,
+        details: error
+      });
     } else {
       console.log('✅ Supabase connected successfully');
+      if (data.session) {
+        console.log('👤 User session found:', data.session.user?.email);
+      } else {
+        console.log('👤 No active user session');
+      }
     }
   }).catch(err => {
-    console.error('❌ Supabase connection failed:', err.message);
+    console.error('❌ Supabase connection failed:', {
+      message: err.message,
+      stack: err.stack,
+      error: err
+    });
   });
 } else {
   console.warn('🚧 Supabase connection skipped - using placeholder credentials');
