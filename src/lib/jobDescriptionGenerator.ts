@@ -17,7 +17,7 @@ export interface JDDraft {
   user_id: string;
   input_type: string;
   input_summary: string;
-  content?: string;
+  raw_input: string;
   file_name?: string;
   file_type?: string;
   url?: string;
@@ -85,7 +85,7 @@ export async function generateInitialJD(input: string, userId: string): Promise<
       user_id: userId,
       input_type: inputType,
       input_summary: input.substring(0, 500), // Limit summary length
-      content: input,
+      raw_input: input, // Set raw_input to the original input
       status: 'pending' as const
     };
 
@@ -621,7 +621,7 @@ export async function retryJDGeneration(draftId: string, userId: string): Promis
       };
     }
 
-    if (!draft.content) {
+    if (!draft.raw_input) {
       return {
         success: false,
         error: 'Original input content is missing.'
@@ -637,14 +637,14 @@ export async function retryJDGeneration(draftId: string, userId: string): Promis
       
       switch (draft.input_type) {
         case 'brief_with_link':
-          generatedJD = await generateJDFromBriefAndLink(draft.content);
+          generatedJD = await generateJDFromBriefAndLink(draft.raw_input);
           break;
         case 'link_only':
           if (!draft.url) throw new Error('URL missing for link-only input');
           generatedJD = await rewriteJDFromURL(draft.url);
           break;
         case 'brief_only':
-          generatedJD = await generateJDFromBrief(draft.content);
+          generatedJD = await generateJDFromBrief(draft.raw_input);
           break;
         default:
           throw new Error('Unknown input type for retry');

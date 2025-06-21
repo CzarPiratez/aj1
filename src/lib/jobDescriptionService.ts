@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 export interface JDInput {
   inputType: 'brief' | 'upload' | 'link';
   inputSummary: string;
-  content?: string;
+  raw_input: string;
   fileName?: string;
   fileType?: string;
   url?: string;
@@ -17,7 +17,7 @@ export interface JDDraft {
   user_id: string;
   input_type: 'brief' | 'upload' | 'link';
   input_summary: string;
-  content?: string;
+  raw_input: string;
   file_name?: string;
   file_type?: string;
   url?: string;
@@ -166,7 +166,7 @@ export async function saveJDInput(userId: string, input: JDInput): Promise<JDDra
         user_id: userId,
         input_type: input.inputType,
         input_summary: input.inputSummary,
-        content: input.content,
+        raw_input: input.raw_input,
         file_name: input.fileName,
         file_type: input.fileType,
         url: input.url,
@@ -251,13 +251,13 @@ Please create a well-structured job description that includes:
 
 Make it suitable for the nonprofit/development sector with inclusive language.`;
 
-    } else if (draft.input_type === 'upload' && draft.content) {
+    } else if (draft.input_type === 'upload' && draft.raw_input) {
       prompt = `Please improve and refine this job description draft:
 
 Original file: ${draft.file_name}
 
 Content:
-${draft.content}
+${draft.raw_input}
 
 Please enhance it by:
 - Improving clarity and structure
@@ -266,13 +266,13 @@ Please enhance it by:
 - Making it more compelling and professional
 - Adding any missing standard sections`;
 
-    } else if (draft.input_type === 'link' && draft.content) {
+    } else if (draft.input_type === 'link' && draft.raw_input) {
       prompt = `Rewrite this job posting with better clarity, DEI language, and nonprofit alignment:
 
 Source URL: ${draft.url}
 
 Original content:
-${draft.content}
+${draft.raw_input}
 
 Please create a new version that:
 - Uses clear, inclusive language
@@ -325,6 +325,7 @@ export async function processJDInput(
       jdInput = {
         inputType: 'brief',
         inputSummary: input.substring(0, 500), // Limit summary length
+        raw_input: input, // Set raw_input to the original input
       };
 
     } else if (inputType === 'upload' && input instanceof File) {
@@ -339,7 +340,7 @@ export async function processJDInput(
       jdInput = {
         inputType: 'upload',
         inputSummary: `Uploaded file: ${input.name}`,
-        content,
+        raw_input: content, // Set raw_input to the extracted content
         fileName: input.name,
         fileType: fileExtension,
       };
@@ -354,7 +355,7 @@ export async function processJDInput(
       jdInput = {
         inputType: 'link',
         inputSummary: `Job posting from: ${extractDomain(input)}`,
-        content,
+        raw_input: content, // Set raw_input to the fetched content
         url: input,
       };
 
