@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
+import { JobDescriptionOutput } from '@/components/jd/JobDescriptionOutput';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
@@ -148,6 +149,16 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     setMainContent(content);
   };
 
+  const handleJobSave = async (jobData: any) => {
+    console.log('Saving job data:', jobData);
+    // TODO: Implement job saving logic
+  };
+
+  const handleJobPublish = async (jobData: any) => {
+    console.log('Publishing job data:', jobData);
+    // TODO: Implement job publishing logic
+  };
+
   return (
     <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: '#F9F7F4' }}>
       {/* Sidebar - Start closed by default */}
@@ -207,7 +218,15 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               style={{ backgroundColor: '#FFFFFF' }}
             >
               {mainContent ? (
-                <MainContentRenderer content={mainContent} />
+                mainContent.type === 'job-description' ? (
+                  <JobDescriptionOutput
+                    jobData={mainContent.data}
+                    onSave={handleJobSave}
+                    onPublish={handleJobPublish}
+                  />
+                ) : (
+                  <MainContentRenderer content={mainContent} />
+                )
               ) : (
                 <AuthenticatedIndex profile={profile} />
               )}

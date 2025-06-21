@@ -36,6 +36,7 @@ import {
   type JDInput,
   type JDDraft
 } from '@/lib/jobDescriptionService';
+import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
@@ -51,6 +52,7 @@ interface Message {
     jobId?: string;
     jdDraftId?: string;
     isJDRequest?: boolean;
+    jobData?: any;
   };
 }
 
@@ -229,6 +231,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Generate JD using AI
       const generatedJD = await generateJDFromInput(savedDraft);
 
+      // Parse the generated JD into structured data
+      const parsedJobData = parseJobDescription(generatedJD);
+
       // Update progress flag
       await updateFlag('has_generated_jd', true);
 
@@ -241,6 +246,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         type: 'job-description',
         metadata: {
           jdDraftId: savedDraft.id,
+          jobData: parsedJobData,
         }
       };
 
@@ -248,6 +254,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => prev.map(msg => 
         msg.id === processingMessage.id ? jobMessage : msg
       ));
+
+      // Show the structured JD in the right panel
+      onContentChange({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        draftId: savedDraft.id
+      });
 
       console.log('✅ JD generation completed successfully');
 
@@ -294,6 +309,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Generate job description using AI
       const jobDescription = await generateJobDescription(websiteContent);
 
+      // Parse the generated JD into structured data
+      const parsedJobData = parseJobDescription(jobDescription);
+
       // Create final message with job description
       const jobMessage: Message = {
         id: (Date.now() + 2).toString(),
@@ -303,6 +321,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         type: 'job-description',
         metadata: {
           websiteContent,
+          jobData: parsedJobData,
         }
       };
 
@@ -329,6 +348,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           ));
         }
       }
+
+      // Show the structured JD in the right panel
+      onContentChange({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        websiteContent
+      });
 
     } catch (error) {
       console.error('Error processing URL:', error);
@@ -484,6 +512,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
           // Generate improved JD
           const generatedJD = await generateJDFromInput(savedDraft);
+          
+          // Parse the generated JD into structured data
+          const parsedJobData = parseJobDescription(generatedJD);
+          
           await updateFlag('has_generated_jd', true);
 
           // Create final message with improved job description
@@ -495,6 +527,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             type: 'job-description',
             metadata: {
               jdDraftId: savedDraft.id,
+              jobData: parsedJobData,
             }
           };
 
@@ -502,6 +535,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           setMessages(prev => prev.map(msg => 
             msg.id === processingMessage.id ? jobMessage : msg
           ));
+
+          // Show the structured JD in the right panel
+          onContentChange({
+            type: 'job-description',
+            title: 'Generated Job Description',
+            content: 'AI-generated job description ready for review',
+            data: parsedJobData,
+            draftId: savedDraft.id
+          });
 
         } catch (error) {
           console.error('❌ Error processing JD file upload:', error);
