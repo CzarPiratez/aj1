@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// Enhanced AI configuration with multiple models and better rate limit handling
+// Primary AI configuration with DeepSeek Chat V3 as specifically requested
 const apiKey1 = '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';
 const apiKey2 = import.meta.env.VITE_OPENROUTER_API_KEY_2;
 
@@ -41,21 +41,6 @@ const AI_CONFIGS = [
     key: apiKey2 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Backup AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
-  },
-  // Add alternative free models as fallbacks
-  {
-    type: 'openrouter' as const,
-    name: 'Llama 3.1 8B Fallback',
-    key: apiKey1 || '',
-    default_model: 'meta-llama/llama-3.1-8b-instruct:free',
-    description: 'Fallback AI engine - Llama 3.1 8B Instruct Free'
-  },
-  {
-    type: 'openrouter' as const,
-    name: 'Mistral 7B Fallback',
-    key: apiKey1 || '',
-    default_model: 'mistralai/mistral-7b-instruct:free',
-    description: 'Fallback AI engine - Mistral 7B Instruct Free'
   }
 ];
 
@@ -744,9 +729,8 @@ export function initializeAI(): void {
     return;
   }
   
-  console.log('✅ AI Service initialized with multiple fallback models');
+  console.log('✅ AI Service initialized with DeepSeek Chat V3 (deepseek/deepseek-chat-v3-0324:free)');
   console.log(`🎯 Primary model: ${validConfigs[0].name} (${validConfigs[0].default_model})`);
-  console.log(`🔄 Fallback models: ${validConfigs.length - 1} available`);
   
   // Test the connection (but don't block initialization)
   checkAIStatus().then(status => {
