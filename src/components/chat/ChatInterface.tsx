@@ -786,7 +786,7 @@ Please submit your CV and a cover letter explaining your interest in this role a
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the NEW smart assistant message
+      // Send the NEW smart assistant message (FIXED HERE!)
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. Paste a brief — e.g., \"We need a project officer for a migration program…\"\n2. Paste a brief + website/project link — I'll align the JD with your mission.\n3. Upload a JD draft — I'll refine and format it for clarity, DEI, and impact.\n4. Paste a job post link — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
