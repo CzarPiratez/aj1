@@ -121,6 +121,23 @@ export interface Job {
   updated_at: string;
 }
 
+export interface Application {
+  id: string;
+  user_id: string;
+  job_id: string;
+  status: 'pending' | 'reviewed' | 'accepted' | 'rejected' | 'withdrawn';
+  cover_letter?: string;
+  additional_notes?: string;
+  applied_at: string;
+  reviewed_at?: string;
+  created_at: string;
+  updated_at: string;
+  
+  // Joined data (when querying with joins)
+  job?: Job;
+  user?: User;
+}
+
 export interface Conversation {
   id: string;
   title: string;
