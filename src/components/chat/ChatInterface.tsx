@@ -341,7 +341,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'brief_with_link':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${url}\n🤖 Generating a mission-aligned job description with DeepSeek Chat V3...`,
+            content: `✅ Perfect! I have your brief and organization link.\n\n🔗 Fetching context from: ${extractDomain(url!)}\n🤖 Generating a mission-aligned job description with DeepSeek Chat V3...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -350,7 +350,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         case 'link_only':
           processingMessage = {
             id: (Date.now() + 1).toString(),
-            content: `🔗 Great! I'll fetch the existing job posting from: ${url}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
+            content: `🔗 Great! I'll fetch the existing job posting from: ${extractDomain(url!)}\n\n🤖 Rewriting it with better clarity, DEI language, and nonprofit alignment...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -484,6 +484,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsProcessingJD(false);
+    }
+  };
+
+  // Helper function to extract domain from URL
+  const extractDomain = (url: string): string => {
+    try {
+      const domain = new URL(url).hostname;
+      return domain.replace('www.', '');
+    } catch {
+      return url;
     }
   };
 
@@ -847,10 +857,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the corrected smart assistant message
+      // Send the updated smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief + website or project link** (e.g., \"We need a field coordinator for a migration project in Kenya. Our organization: https://example.org\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Paste a brief** — e.g., \"We need a project officer for a migration program…\"\n2. **Paste a brief + website/project link** — I'll align the JD with your mission.\n3. **Upload a JD draft** — I'll refine and format it for clarity, DEI, and impact.\n4. **Paste a job post link** — I'll fetch and rewrite it in a stronger format.\n\nJust send one of these and I'll take care of the rest.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -1039,7 +1049,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                               <Link className="w-3 h-3" style={{ color: '#10B981' }} />
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief+Link • Upload • Link
+                              Brief • Upload • Link
                             </span>
                           </div>
                         )}
@@ -1170,7 +1180,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Paste a brief + website link, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Paste a brief, brief + website link, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -1270,7 +1280,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide brief+link, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput ? 'Provide brief, brief+link, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
