@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { LandingPage } from '@/components/landing/LandingPage';
@@ -10,6 +10,8 @@ import './App.css';
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
+  const lastAuthEventRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Get initial session
@@ -29,6 +31,7 @@ function App() {
         
         console.log('✅ Supabase session retrieved successfully');
         setUser(session?.user ?? null);
+        setInitialLoad(false);
       } catch (error) {
         console.error('❌ Error getting session:', error);
         
@@ -40,6 +43,7 @@ function App() {
         });
         
         setUser(null);
+        setInitialLoad(false);
       } finally {
         setLoading(false);
       }
@@ -50,17 +54,29 @@ function App() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔄 Auth event:', event);
+        console.log('🔄 Auth event:', event, 'Session exists:', !!session);
         
         try {
-          setUser(session?.user ?? null);
+          const newUser = session?.user ?? null;
+          setUser(newUser);
           setLoading(false);
           
-          // Show success message for sign in/sign up events
-          if (event === 'SIGNED_IN') {
-            toast.success('Successfully signed in!');
-          } else if (event === 'SIGNED_OUT') {
-            toast.success('Successfully signed out!');
+          // Only show toast messages for actual auth events, not session validations
+          // and only after the initial load is complete
+          if (!initialLoad && event !== 'TOKEN_REFRESHED') {
+            // Prevent duplicate toasts for the same event
+            const eventKey = `${event}-${newUser?.id || 'none'}`;
+            if (lastAuthEventRef.current !== eventKey) {
+              lastAuthEventRef.current = eventKey;
+              
+              if (event === 'SIGNED_IN' && newUser) {
+                toast.success('Successfully signed in!');
+              } else if (event === 'SIGNED_OUT') {
+                toast.success('Successfully signed out!');
+                // Clear the last event when signing out
+                lastAuthEventRef.current = null;
+              }
+            }
           }
         } catch (error) {
           console.error('❌ Auth state change error:', error);
@@ -76,7 +92,7 @@ function App() {
       console.log('🧹 Cleaning up auth subscription');
       subscription.unsubscribe();
     };
-  }, []);
+  }, [initialLoad]);
 
   // Show loading screen
   if (loading) {
