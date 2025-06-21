@@ -32,24 +32,52 @@ if (!hasValidCredentials) {
 const fallbackUrl = 'https://placeholder.supabase.co';
 const fallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDUxOTI4MDAsImV4cCI6MTk2MDc2ODgwMH0.placeholder';
 
-// Create Supabase client with proper configuration
-export const supabase = createClient(
-  hasValidCredentials ? supabaseUrl : fallbackUrl,
-  hasValidCredentials ? supabaseAnonKey : fallbackKey,
-  {
-    auth: {
-      autoRefreshToken: hasValidCredentials,
-      persistSession: hasValidCredentials,
-      detectSessionInUrl: hasValidCredentials,
-      flowType: 'pkce'
+// Create a mock client that prevents network requests when credentials are invalid
+const createMockSupabaseClient = () => {
+  const mockAuth = {
+    signInWithPassword: async () => {
+      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
     },
-    global: {
-      headers: {
-        'X-Client-Info': 'aidjobs-platform'
+    signUp: async () => {
+      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
+    },
+    signOut: async () => {
+      throw new Error('Supabase not configured. Please set up your Supabase credentials in the .env file.');
+    },
+    getSession: async () => ({ data: { session: null }, error: null }),
+    getUser: async () => ({ data: { user: null }, error: null }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } })
+  };
+
+  const mockFrom = () => ({
+    select: () => ({ single: async () => ({ data: null, error: { code: 'MOCK_ERROR' } }) }),
+    insert: async () => ({ data: null, error: { message: 'Supabase not configured' } }),
+    update: async () => ({ data: null, error: { message: 'Supabase not configured' } }),
+    delete: async () => ({ data: null, error: { message: 'Supabase not configured' } })
+  });
+
+  return {
+    auth: mockAuth,
+    from: mockFrom
+  };
+};
+
+// Create Supabase client with proper configuration
+export const supabase = hasValidCredentials 
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce'
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'aidjobs-platform'
+        }
       }
-    }
-  }
-);
+    })
+  : createMockSupabaseClient() as any;
 
 // Test the connection only if we have real credentials
 if (hasValidCredentials) {
@@ -78,7 +106,7 @@ if (hasValidCredentials) {
     });
   });
 } else {
-  console.warn('🚧 Supabase connection skipped - using placeholder credentials');
+  console.warn('🚧 Supabase connection skipped - using mock client');
   console.warn('🔗 To connect to Supabase, click the "Connect to Supabase" button in the top right');
 }
 
