@@ -17,6 +17,7 @@ export interface JDDraft {
   user_id: string;
   input_type: string;
   raw_input: string;
+  input_summary: string;
   content?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   generated_jd?: string;
@@ -42,6 +43,21 @@ export function extractDomain(url: string): string {
     return domain.replace('www.', '');
   } catch (_) {
     return url;
+  }
+}
+
+// Generate input summary for database storage
+function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File): string {
+  if (inputType === 'upload' && input instanceof File) {
+    return `File upload: ${input.name}`;
+  } else if (inputType === 'link' && typeof input === 'string') {
+    return `Website: ${extractDomain(input)}`;
+  } else if (inputType === 'brief' && typeof input === 'string') {
+    // Take first 100 characters of the brief as summary
+    const brief = input.trim();
+    return brief.length > 100 ? brief.substring(0, 97) + '...' : brief;
+  } else {
+    return 'Job description input';
   }
 }
 
@@ -127,6 +143,9 @@ export async function processJDInput(
       throw new Error('Invalid input type or input format');
     }
 
+    // Generate input summary
+    const inputSummary = generateInputSummary(inputType, input);
+
     // Save to database
     const { data, error } = await supabase
       .from('jd_drafts')
@@ -134,6 +153,7 @@ export async function processJDInput(
         user_id: userId,
         input_type: inputType,
         raw_input: rawInput,
+        input_summary: inputSummary,
         content: content,
         file_name: fileName,
         file_type: fileType,
