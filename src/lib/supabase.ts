@@ -1,28 +1,41 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Use NEXT_PUBLIC_ prefixed environment variables for client-side access
+const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 console.log('🔧 Supabase Config Check:', {
-  url: supabaseUrl ? `✅ Set (${supabaseUrl})` : '❌ Missing VITE_SUPABASE_URL',
-  key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing VITE_SUPABASE_ANON_KEY',
-  envVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
+  url: supabaseUrl ? `✅ Set (${supabaseUrl})` : '❌ Missing NEXT_PUBLIC_SUPABASE_URL',
+  key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  envVars: Object.keys(import.meta.env).filter(key => key.startsWith('NEXT_PUBLIC_'))
 });
+
+// Expected correct values
+const EXPECTED_URL = 'https://vsactuzdnmbqatvghyli.supabase.co';
+const EXPECTED_KEY_PREFIX = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzYWN0dXpkbm1icWF0dmdoeWxpIiwicm9sZSI6ImFub24i';
 
 // Validate Supabase credentials
 const hasValidCredentials = supabaseUrl && 
   supabaseAnonKey && 
-  supabaseUrl !== 'your_supabase_project_url_here' &&
-  supabaseAnonKey !== 'your_supabase_anon_key_here' &&
+  supabaseUrl === EXPECTED_URL &&
+  supabaseAnonKey.startsWith(EXPECTED_KEY_PREFIX) &&
   supabaseUrl.startsWith('https://') &&
   supabaseUrl.includes('.supabase.co');
 
 if (!hasValidCredentials) {
   console.error('❌ Missing or invalid Supabase environment variables');
   console.error('Please check your .env file and ensure you have:');
-  console.error('VITE_SUPABASE_URL=https://vsactuzdnmbqatvghyli.supabase.co');
-  console.error('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+  console.error('NEXT_PUBLIC_SUPABASE_URL=https://vsactuzdnmbqatvghyli.supabase.co');
+  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
   console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
+  
+  if (supabaseUrl !== EXPECTED_URL) {
+    console.error(`❌ URL mismatch: Expected ${EXPECTED_URL}, got ${supabaseUrl}`);
+  }
+  if (!supabaseAnonKey?.startsWith(EXPECTED_KEY_PREFIX)) {
+    console.error('❌ Anon key mismatch: Key does not match expected project');
+  }
+  
   throw new Error('Invalid Supabase configuration');
 }
 
