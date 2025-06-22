@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
+import { retryAIGeneration } from '@/lib/jobDescriptionService';
 
 interface AuthenticatedLayoutProps {
   user: any;
@@ -164,39 +165,43 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
 
   // Handle AI fallback retry
   const handleRetryAI = async () => {
-    if (!mainContent?.data?.draftId) return;
+    if (!mainContent?.data?.draftId) {
+      toast.error('No draft available to retry');
+      return;
+    }
     
     setIsRetryingAI(true);
     
     try {
-      // Simulate retry logic (replace with actual AI retry)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('🔄 Retrying AI generation for draft:', mainContent.data.draftId);
       
-      // Mock successful retry
-      const retrySuccess = Math.random() > 0.3; // 70% success rate
+      // Attempt to retry AI generation
+      const generatedJD = await retryAIGeneration(mainContent.data.draftId);
       
-      if (retrySuccess) {
-        // Update content to show successful generation
-        setMainContent({
-          ...mainContent,
-          type: 'job-description',
-          title: 'Generated Job Description',
-          content: 'AI-generated job description ready for review',
-          data: {
-            ...mainContent.data,
-            title: 'Successfully Generated Job Description',
-            summary: 'This job description was successfully generated after AI reconnection.',
-            // ... other job data
-          }
-        });
-        
-        toast.success('Job description generated successfully!');
-      } else {
-        throw new Error('AI is still temporarily unavailable');
-      }
+      // Parse the generated JD into structured data
+      const { parseJobDescription } = await import('@/lib/jobDescriptionParser');
+      const parsedJobData = parseJobDescription(generatedJD);
+      
+      // Update content to show successful generation
+      setMainContent({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        draftId: mainContent.data.draftId
+      });
+      
+      toast.success('Job description generated successfully!');
+      
     } catch (error) {
       console.error('Retry failed:', error);
-      toast.error('AI is still offline. Please try again in a few minutes.');
+      
+      // Check if it's still a rate limit error
+      if (error instanceof Error && error.message === 'RATE_LIMIT_FALLBACK') {
+        toast.error('AI is still busy. Please try again in a few minutes.');
+      } else {
+        toast.error('AI generation failed. Please try again later.');
+      }
     } finally {
       setIsRetryingAI(false);
     }
@@ -206,13 +211,46 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
   const handleContinueManually = () => {
     // Switch to manual editing mode
     setMainContent({
-      ...mainContent,
       type: 'job-description-manual',
       title: 'Manual Job Description Editor',
       content: 'Continue drafting your job description manually',
       data: {
         ...mainContent.data,
-        manualMode: true
+        manualMode: true,
+        title: 'Manual Job Description',
+        summary: 'Start drafting your job description manually...',
+        sections: [
+          {
+            id: 'overview',
+            title: 'Role Overview',
+            content: 'Describe the role and its mission alignment...',
+            isLocked: false,
+            isEditing: true
+          },
+          {
+            id: 'responsibilities',
+            title: 'Key Responsibilities',
+            content: 'List the main duties and responsibilities...',
+            isLocked: false,
+            isEditing: false
+          },
+          {
+            id: 'qualifications',
+            title: 'Qualifications & Experience',
+            content: 'Specify required and preferred qualifications...',
+            isLocked: false,
+            isEditing: false
+          }
+        ],
+        organization: 'Your Organization',
+        location: 'Location',
+        contractType: 'Full-Time',
+        clarityScore: 75,
+        readingLevel: 'College',
+        deiScore: 80,
+        jargonWarnings: [],
+        sector: ['Development'],
+        sdgs: ['SDG 8']
       }
     });
     
@@ -293,7 +331,7 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
                   
                   {/* Main Content */}
                   <div className="flex-1 overflow-hidden">
-                    {mainContent.type === 'job-description' ? (
+                    {mainContent.type === 'job-description' || mainContent.type === 'job-description-manual' ? (
                       <JobDescriptionOutput
                         jobData={mainContent.data}
                         onSave={handleJobSave}

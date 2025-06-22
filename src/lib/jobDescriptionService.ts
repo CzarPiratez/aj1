@@ -22,8 +22,25 @@ export interface JDDraft {
   status: 'pending' | 'processing' | 'completed' | 'failed';
   generated_jd?: string;
   error_message?: string;
+  has_fallback?: boolean;
+  is_ai_generated?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// Generate input summary for database storage
+function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File): string {
+  if (inputType === 'upload' && input instanceof File) {
+    return `File upload: ${input.name}`;
+  } else if (inputType === 'link' && typeof input === 'string') {
+    return `Website: ${extractDomain(input)}`;
+  } else if (inputType === 'brief' && typeof input === 'string') {
+    // Take first 100 characters of the brief as summary
+    const brief = input.trim();
+    return brief.length > 100 ? brief.substring(0, 97) + '...' : brief;
+  } else {
+    return 'Job description input';
+  }
 }
 
 // URL validation
@@ -46,19 +63,23 @@ export function extractDomain(url: string): string {
   }
 }
 
-// Generate input summary for database storage
-function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File): string {
-  if (inputType === 'upload' && input instanceof File) {
-    return `File upload: ${input.name}`;
-  } else if (inputType === 'link' && typeof input === 'string') {
-    return `Website: ${extractDomain(input)}`;
-  } else if (inputType === 'brief' && typeof input === 'string') {
-    // Take first 100 characters of the brief as summary
-    const brief = input.trim();
-    return brief.length > 100 ? brief.substring(0, 97) + '...' : brief;
-  } else {
-    return 'Job description input';
-  }
+// Check if error is rate limit related
+function isRateLimitError(error: any): boolean {
+  if (!error) return false;
+  
+  const errorMessage = error.message || error.toString();
+  const errorLower = errorMessage.toLowerCase();
+  
+  return (
+    error.status === 429 ||
+    errorLower.includes('rate limit') ||
+    errorLower.includes('429') ||
+    errorLower.includes('quota') ||
+    errorLower.includes('too many requests') ||
+    errorLower.includes('rate limited') ||
+    errorLower.includes('free-models-per-min') ||
+    errorLower.includes('free-models-per-day')
+  );
 }
 
 // Validate brief input
@@ -159,6 +180,8 @@ export async function processJDInput(
         file_type: fileType,
         url: url,
         status: 'pending',
+        has_fallback: false,
+        is_ai_generated: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -177,7 +200,47 @@ export async function processJDInput(
   }
 }
 
-// Generate JD from saved draft
+// Create fallback draft when AI is rate limited
+export async function createFallbackDraft(
+  userId: string,
+  inputType: 'brief' | 'upload' | 'link',
+  rawInput: string,
+  inputSummary: string
+): Promise<JDDraft | null> {
+  try {
+    console.log('🔄 Creating fallback draft due to AI rate limit');
+    
+    const { data, error } = await supabase
+      .from('jd_drafts')
+      .insert({
+        user_id: userId,
+        input_type: inputType,
+        raw_input: rawInput,
+        input_summary: inputSummary,
+        content: rawInput,
+        status: 'pending',
+        has_fallback: true,
+        is_ai_generated: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating fallback draft:', error);
+      return null;
+    }
+
+    console.log('✅ Fallback draft created successfully');
+    return data as JDDraft;
+  } catch (error) {
+    console.error('Error in createFallbackDraft:', error);
+    return null;
+  }
+}
+
+// Generate JD from saved draft with rate limit handling
 export async function generateJDFromInput(draft: JDDraft): Promise<string> {
   try {
     // Update status to processing
@@ -249,6 +312,8 @@ Please enhance it by:
       .update({
         generated_jd: generatedJD,
         status: 'completed',
+        is_ai_generated: true,
+        has_fallback: false,
         updated_at: new Date().toISOString()
       })
       .eq('id', draft.id);
@@ -258,16 +323,58 @@ Please enhance it by:
   } catch (error) {
     console.error('Error generating JD:', error);
     
-    // Update status to failed
-    await supabase
-      .from('jd_drafts')
-      .update({
-        status: 'failed',
-        error_message: error instanceof Error ? error.message : 'Unknown error',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', draft.id);
+    // Check if this is a rate limit error
+    if (isRateLimitError(error)) {
+      console.log('🚫 AI rate limit detected, creating fallback');
+      
+      // Update draft to indicate fallback status
+      await supabase
+        .from('jd_drafts')
+        .update({
+          status: 'pending',
+          has_fallback: true,
+          is_ai_generated: false,
+          error_message: 'AI temporarily unavailable - rate limit reached',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', draft.id);
 
+      // Throw a specific rate limit error
+      throw new Error('RATE_LIMIT_FALLBACK');
+    } else {
+      // Update status to failed for other errors
+      await supabase
+        .from('jd_drafts')
+        .update({
+          status: 'failed',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', draft.id);
+
+      throw error;
+    }
+  }
+}
+
+// Retry AI generation for a fallback draft
+export async function retryAIGeneration(draftId: string): Promise<string> {
+  try {
+    // Get the draft
+    const { data: draft, error } = await supabase
+      .from('jd_drafts')
+      .select('*')
+      .eq('id', draftId)
+      .single();
+
+    if (error || !draft) {
+      throw new Error('Draft not found');
+    }
+
+    // Attempt to generate again
+    return await generateJDFromInput(draft as JDDraft);
+  } catch (error) {
+    console.error('Error retrying AI generation:', error);
     throw error;
   }
 }

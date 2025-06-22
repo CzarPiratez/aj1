@@ -34,6 +34,7 @@ import {
   validateBriefInput,
   isValidUrl as isValidJDUrl,
   extractDomain as extractJDDomain,
+  createFallbackDraft,
   type JDInput,
   type JDDraft
 } from '@/lib/jobDescriptionService';
@@ -271,36 +272,69 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       } catch (aiError) {
         console.error('❌ AI generation failed:', aiError);
         
-        // Handle AI fallback gracefully
-        const fallbackMessage: Message = {
-          id: (Date.now() + 3).toString(),
-          content: "I was just about to generate your job description, but looks like my AI brain needs a moment to reconnect. No worries though — your input is safe, and we'll pick up from right here once I'm back online. You can continue editing manually for now if you'd like.",
-          sender: 'assistant',
-          timestamp: new Date(),
-        };
+        // Check if this is a rate limit error
+        if (aiError instanceof Error && aiError.message === 'RATE_LIMIT_FALLBACK') {
+          console.log('🚫 Rate limit detected, handling fallback');
+          
+          // Create fallback draft
+          const inputSummary = inputType === 'brief' ? 'Brief provided' : 'Link provided';
+          const fallbackDraft = await createFallbackDraft(
+            profile.id,
+            inputType,
+            processedInput,
+            inputSummary
+          );
 
-        // Replace processing message with fallback message
-        setMessages(prev => prev.map(msg => 
-          msg.id === processingMessage.id ? fallbackMessage : msg
-        ));
+          // Show rate limit fallback message
+          const fallbackMessage: Message = {
+            id: (Date.now() + 3).toString(),
+            content: "It looks like my AI assistant is currently busy helping others — we're hitting a temporary limit. But don't worry — your input is saved, and I'll be ready to resume shortly.",
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
 
-        // Show AI fallback notification in right panel
-        onContentChange({
-          type: 'ai-fallback',
-          title: 'AI Assistant Paused',
-          content: 'AI is temporarily offline',
-          data: {
-            message: "Looks like AI is temporarily offline — but don't worry, your job brief has been saved. You can continue drafting manually, or take a short break while we reconnect.\n\nThis happens rarely, and we'll notify you once everything's running smoothly again.",
-            draftId: null // We don't have a draft ID in this case
-          }
-        });
+          // Replace processing message with fallback message
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? fallbackMessage : msg
+          ));
 
-        // Save fallback status to Supabase if we have a draft
-        try {
-          // We could save fallback status here if needed
-          console.log('AI fallback triggered, user input saved');
-        } catch (dbError) {
-          console.error('Error saving fallback status:', dbError);
+          // Show fallback notification in right panel
+          onContentChange({
+            type: 'ai-fallback',
+            title: 'AI Assistant Paused',
+            content: 'AI is temporarily offline due to rate limits',
+            data: {
+              message: "It looks like my AI assistant is currently busy helping others — we're hitting a temporary limit. But don't worry — your input is saved, and I'll be ready to resume shortly.\n\nYou can try again in a few minutes, or continue drafting manually if you'd like.",
+              draftId: fallbackDraft?.id || null,
+              canRetry: true
+            }
+          });
+
+        } else {
+          // Handle other AI errors
+          const fallbackMessage: Message = {
+            id: (Date.now() + 3).toString(),
+            content: "I was just about to generate your job description, but looks like my AI brain needs a moment to reconnect. No worries though — your input is safe, and we'll pick up from right here once I'm back online. You can continue editing manually for now if you'd like.",
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          // Replace processing message with fallback message
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? fallbackMessage : msg
+          ));
+
+          // Show AI fallback notification in right panel
+          onContentChange({
+            type: 'ai-fallback',
+            title: 'AI Assistant Paused',
+            content: 'AI is temporarily offline',
+            data: {
+              message: "Looks like AI is temporarily offline — but don't worry, your job brief has been saved. You can continue drafting manually, or take a short break while we reconnect.\n\nThis happens rarely, and we'll notify you once everything's running smoothly again.",
+              draftId: null,
+              canRetry: false
+            }
+          });
         }
       }
 
@@ -399,15 +433,34 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } catch (error) {
       console.error('Error processing URL:', error);
       
-      // Show error message
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id 
-          ? { 
-              ...msg, 
-              content: `❌ Sorry, I couldn't process that website. Please try:\n\n• Checking the URL is correct\n• Using a different organization website\n• Providing more details about the organization manually\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}` 
-            }
-          : msg
-      ));
+      // Check if this is a rate limit error
+      const isRateLimit = error instanceof Error && (
+        error.message.includes('rate limit') ||
+        error.message.includes('429') ||
+        error.message.includes('quota')
+      );
+
+      if (isRateLimit) {
+        // Show rate limit specific message
+        setMessages(prev => prev.map(msg => 
+          msg.id === processingMessage.id 
+            ? { 
+                ...msg, 
+                content: `🚫 My AI assistant is currently busy helping others — we're hitting a temporary limit. Your website analysis is saved, and I'll be ready to generate the job description shortly.\n\nPlease try again in a few minutes.` 
+              }
+            : msg
+        ));
+      } else {
+        // Show general error message
+        setMessages(prev => prev.map(msg => 
+          msg.id === processingMessage.id 
+            ? { 
+                ...msg, 
+                content: `❌ Sorry, I couldn't process that website. Please try:\n\n• Checking the URL is correct\n• Using a different organization website\n• Providing more details about the organization manually\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}` 
+              }
+            : msg
+        ));
+      }
     } finally {
       setIsProcessingUrl(false);
     }
@@ -1068,7 +1121,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput ? 'Share your job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
