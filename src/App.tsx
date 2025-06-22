@@ -164,11 +164,20 @@ function App() {
           {/* Developer-only auth debug route */}
           <Route path="/dev/auth-debug" element={<AuthDebugPage />} />
           
-          {/* Auth Debug & Reset page */}
+          {/* Auth Debug & Reset page - accessible to specific user */}
           <Route path="/auth-debug" element={<AuthDebugResetPage />} />
           
-          {/* Main application routes */}
-          <Route path="/*" element={
+          {/* Main application route */}
+          <Route path="/" element={
+            user ? (
+              <AuthenticatedLayout user={user} />
+            ) : (
+              <LandingPage />
+            )
+          } />
+          
+          {/* Catch all other routes and redirect to main app */}
+          <Route path="*" element={
             user ? (
               <AuthenticatedLayout user={user} />
             ) : (
