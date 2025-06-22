@@ -9,7 +9,8 @@ import {
   Globe,
   Loader2,
   FileText,
-  Link
+  Link,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -65,7 +66,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isProcessingJD, setIsProcessingJD] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
-  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -102,78 +102,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  // URL validation
-  const isValidUrl = (string: string): boolean => {
-    try {
-      const url = new URL(string);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch (_) {
-      return false;
-    }
-  };
-
-  // Detect input type for JD generation
-  const detectJDInputType = (userInput: string, hasFile: boolean = false): {
-    type: 'brief-with-link' | 'brief-only' | 'file-upload' | 'reference-link';
-    hasUrl: boolean;
-    url?: string;
-  } => {
-    if (hasFile) {
-      return { type: 'file-upload', hasUrl: false };
-    }
-
-    const urlRegex = /(https?:\/\/[^\s]+)/gi;
-    const urls = userInput.match(urlRegex);
-    
-    if (urls && urls.length > 0) {
-      // Check if it's just a URL (reference link) or brief with URL
-      const textWithoutUrls = userInput.replace(urlRegex, '').trim();
-      
-      if (textWithoutUrls.length < 20) {
-        // Mostly just a URL
-        return { 
-          type: 'reference-link', 
-          hasUrl: true, 
-          url: urls[0] 
-        };
-      } else {
-        // Brief text with URL
-        return { 
-          type: 'brief-with-link', 
-          hasUrl: true, 
-          url: urls[0] 
-        };
-      }
-    }
-
-    // No URL found, just text
-    return { type: 'brief-only', hasUrl: false };
-  };
-
-  // Generate confirmation message based on input type
-  const generateConfirmationMessage = (inputType: {
-    type: 'brief-with-link' | 'brief-only' | 'file-upload' | 'reference-link';
-    hasUrl: boolean;
-    url?: string;
-  }): string => {
-    switch (inputType.type) {
-      case 'brief-with-link':
-        return `Perfect! I have your job brief and I'll also check out the organization link you provided (${inputType.url}). This will help me create a job description that's perfectly aligned with your organization's mission and culture.`;
-      
-      case 'brief-only':
-        return `Great! I have your job brief. I'll create a comprehensive job description based on the details you've provided. The more specific information you've included, the better I can tailor it to attract the right candidates.`;
-      
-      case 'file-upload':
-        return `Excellent! I've received your JD draft file. I'll analyze it and create an improved version with better structure, clearer language, and enhanced appeal for mission-driven candidates.`;
-      
-      case 'reference-link':
-        return `Got it! I'll fetch the job posting from that link and create an improved version with better clarity, more inclusive language, and stronger alignment with nonprofit sector best practices.`;
-      
-      default:
-        return `Thank you for providing that information. I'll work with what you've shared to create a professional job description.`;
-    }
-  };
-
   const handleSend = async (messageContent?: string) => {
     const messageToSend = messageContent || input.trim();
     if (!messageToSend) return;
@@ -190,24 +118,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     // Only clear input if we're using the input field (not auto-submit)
     if (!messageContent) {
       setInput('');
-    }
-
-    // Check if we're in JD input detection mode
-    if (awaitingJDInput) {
-      const inputType = detectJDInputType(messageToSend);
-      const confirmationMessage = generateConfirmationMessage(inputType);
-      
-      const responseMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: confirmationMessage,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
-
-      setMessages(prev => [...prev, responseMessage]);
-      setAwaitingJDInput(false); // Reset the waiting state
-      return;
     }
 
     setIsTyping(true);
@@ -351,38 +261,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check if we're in JD input detection mode
-    if (awaitingJDInput) {
-      const allowedTypes = ['pdf', 'docx'];
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension && allowedTypes.includes(fileExtension)) {
-        // Process as JD file upload
-        const inputType = detectJDInputType('', true);
-        const confirmationMessage = generateConfirmationMessage(inputType);
-        
-        const fileMessage: Message = {
-          id: Date.now().toString(),
-          content: `📄 Uploaded file: ${file.name}`,
-          sender: 'user',
-          timestamp: new Date(),
-        };
-
-        const responseMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: confirmationMessage,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'progress'
-        };
-
-        setMessages(prev => [...prev, fileMessage, responseMessage]);
-        setAwaitingJDInput(false);
-        e.target.value = '';
-        return;
-      }
-    }
-
     // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -453,12 +331,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   // NEW: Handle auto-submit for organization tools
   const handleAutoSubmit = (message: string) => {
     console.log('🚀 Auto-submitting message:', message);
-    
-    // Check if this is the JD tool message
-    if (message.includes("Let's get started on your job description")) {
-      setAwaitingJDInput(true); // Set the waiting state for input detection
-    }
-    
     handleSend(message);
   };
 
@@ -585,27 +457,67 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                         className={`inline-block p-3 rounded-2xl font-light leading-relaxed shadow-sm ${
                           message.type === 'suggestion' ? 'border-l-4' : ''
                         } ${
-                          message.type === 'progress' ? 'border-l-4' : ''
+                          message.type === 'jd-request' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'retry-option' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'ai-offline' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
-                                         message.type === 'progress' ? '#E8F5E8' : '#F1EFEC',
+                                         message.type === 'jd-request' ? '#E8F5E8' : 
+                                         message.type === 'retry-option' ? '#FEF3CD' : 
+                                         message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
-                                          message.type === 'progress' ? '#10B981' : 'transparent'
+                                          message.type === 'jd-request' ? '#10B981' : 
+                                          message.type === 'retry-option' ? '#F59E0B' : 
+                                          message.type === 'ai-offline' ? '#EF4444' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                         
-                        {/* Progress indicators */}
-                        {message.type === 'progress' && (
+                        {/* Processing indicators */}
+                        {isProcessingJD && message.content.includes('working on') && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
+                            <span className="text-xs" style={{ color: '#66615C' }}>
+                              Generating with DeepSeek Chat V3...
+                            </span>
+                          </div>
+                        )}
+
+                        {/* JD Request indicators */}
+                        {message.type === 'jd-request' && (
                           <div className="flex items-center mt-2 space-x-2">
                             <div className="flex space-x-1">
                               <FileText className="w-3 h-3" style={{ color: '#10B981' }} />
+                              <Paperclip className="w-3 h-3" style={{ color: '#10B981' }} />
+                              <Link className="w-3 h-3" style={{ color: '#10B981' }} />
                             </div>
                             <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Input Detected
+                              Brief • Upload • Link
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Retry option indicators */}
+                        {message.type === 'retry-option' && message.metadata?.canRetry && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <RefreshCw className="w-3 h-3" style={{ color: '#F59E0B' }} />
+                            <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>
+                              Retry Available
+                            </span>
+                          </div>
+                        )}
+
+                        {/* AI Offline indicators */}
+                        {message.type === 'ai-offline' && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <Globe className="w-3 h-3" style={{ color: '#EF4444' }} />
+                            <span className="text-xs font-medium" style={{ color: '#EF4444' }}>
+                              AI Offline
                             </span>
                           </div>
                         )}
@@ -701,7 +613,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept={awaitingJDInput ? ".pdf,.docx" : ".pdf,.docx,.txt,.json"}
+            accept=".pdf,.docx,.txt,.json"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -726,7 +638,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share your job brief, upload a file, or paste a reference link..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder="Ask me anything about jobs, CVs, or matches..."
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -773,7 +685,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    {awaitingJDInput ? 'Upload JD file (.pdf, .docx)' : 'Attach files (.pdf, .docx, .txt, .json)'}
+                    Attach files (.pdf, .docx, .txt, .json)
                   </TooltipContent>
                 </Tooltip>
 
@@ -827,7 +739,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              Press Enter to send, Shift+Enter for new line
             </p>
           </div>
         </div>
