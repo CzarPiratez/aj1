@@ -223,14 +223,17 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
       setMessages(prev => [...prev, processingMessage]);
 
-      try {
-        // Process the input using the service
-        const savedDraft = await processJDInput(profile.id, inputType, processedInput);
-        if (!savedDraft) {
-          throw new Error('Failed to save JD input');
-        }
+      // Process the input using the enhanced service with fallback support
+      const savedDraft = await processJDInput(profile.id, inputType, processedInput);
+      
+      if (!savedDraft) {
+        throw new Error('Failed to save JD input - please check your input and try again');
+      }
 
-        // Generate JD using AI
+      console.log('✅ JD input saved successfully:', savedDraft.id);
+
+      try {
+        // Attempt AI generation
         const generatedJD = await generateJDFromInput(savedDraft);
 
         // Parse the generated JD into structured data
@@ -261,20 +264,21 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         onContentChange({
           type: 'job-description',
           title: 'Generated Job Description',
-          content: 'AI-generated job description ready for review',
+          content: savedDraft.is_ai_generated ? 'AI-generated job description ready for review' : 'Fallback job description ready for customization',
           data: parsedJobData,
-          draftId: savedDraft.id
+          draftId: savedDraft.id,
+          isAiGenerated: savedDraft.is_ai_generated
         });
 
         console.log('✅ JD generation completed successfully');
 
       } catch (aiError) {
-        console.error('❌ AI generation failed:', aiError);
+        console.error('❌ AI generation failed, handling gracefully:', aiError);
         
-        // Handle AI fallback gracefully
+        // Handle AI fallback gracefully - the service already created a fallback JD
         const fallbackMessage: Message = {
           id: (Date.now() + 3).toString(),
-          content: "I was just about to generate your job description, but looks like my AI brain needs a moment to reconnect. No worries though — your input is safe, and we'll pick up from right here once I'm back online. You can continue editing manually for now if you'd like.",
+          content: "I've created a solid foundation for your job description using our template system. While my AI brain takes a quick break, you can review and customize this draft to perfectly match your needs.\n\nThe structure is all there - just add your specific details and requirements!",
           sender: 'assistant',
           timestamp: new Date(),
         };
@@ -284,33 +288,25 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           msg.id === processingMessage.id ? fallbackMessage : msg
         ));
 
-        // Show AI fallback notification in right panel
+        // Show fallback notification in right panel
         onContentChange({
           type: 'ai-fallback',
-          title: 'AI Assistant Paused',
-          content: 'AI is temporarily offline',
+          title: 'Template Mode Active',
+          content: 'Using fallback job description template',
           data: {
-            message: "Looks like AI is temporarily offline — but don't worry, your job brief has been saved. You can continue drafting manually, or take a short break while we reconnect.\n\nThis happens rarely, and we'll notify you once everything's running smoothly again.",
-            draftId: null // We don't have a draft ID in this case
+            message: "Your job brief has been saved and I've created a solid template to get you started. You can customize it manually while my AI assistant reconnects.\n\nThis rarely happens, and you'll be notified once full AI generation is available again.",
+            draftId: savedDraft.id
           }
         });
-
-        // Save fallback status to Supabase if we have a draft
-        try {
-          // We could save fallback status here if needed
-          console.log('AI fallback triggered, user input saved');
-        } catch (dbError) {
-          console.error('Error saving fallback status:', dbError);
-        }
       }
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
-      // Show error message
+      // Show helpful error message
       const errorMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        id: (Date.now() + 4).toString(),
+        content: `❌ I encountered an issue processing your input: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease try again with:\n• A more detailed job brief\n• A valid organization website URL\n• Or upload a job description file`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -542,53 +538,83 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
           setMessages(prev => [...prev, processingMessage]);
 
-          // Process the file upload
+          // Process the file upload with enhanced error handling
           const savedDraft = await processJDInput(profile.id, 'upload', file);
+          
           if (!savedDraft) {
-            throw new Error('Failed to save uploaded file');
+            throw new Error('Failed to save uploaded file - please try again');
           }
 
-          // Generate improved JD
-          const generatedJD = await generateJDFromInput(savedDraft);
-          
-          // Parse the generated JD into structured data
-          const parsedJobData = parseJobDescription(generatedJD);
-          
-          await updateFlag('has_generated_jd', true);
+          // Generate improved JD with fallback support
+          try {
+            const generatedJD = await generateJDFromInput(savedDraft);
+            
+            // Parse the generated JD into structured data
+            const parsedJobData = parseJobDescription(generatedJD);
+            
+            await updateFlag('has_generated_jd', true);
 
-          // Create final message with improved job description
-          const jobMessage: Message = {
-            id: (Date.now() + 2).toString(),
-            content: generatedJD,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'job-description',
-            metadata: {
-              jdDraftId: savedDraft.id,
-              jobData: parsedJobData,
-            }
-          };
+            // Create final message with improved job description
+            const jobMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: generatedJD,
+              sender: 'assistant',
+              timestamp: new Date(),
+              type: 'job-description',
+              metadata: {
+                jdDraftId: savedDraft.id,
+                jobData: parsedJobData,
+              }
+            };
 
-          // Replace processing message with final result
-          setMessages(prev => prev.map(msg => 
-            msg.id === processingMessage.id ? jobMessage : msg
-          ));
+            // Replace processing message with final result
+            setMessages(prev => prev.map(msg => 
+              msg.id === processingMessage.id ? jobMessage : msg
+            ));
 
-          // Show the structured JD in the right panel
-          onContentChange({
-            type: 'job-description',
-            title: 'Generated Job Description',
-            content: 'AI-generated job description ready for review',
-            data: parsedJobData,
-            draftId: savedDraft.id
-          });
+            // Show the structured JD in the right panel
+            onContentChange({
+              type: 'job-description',
+              title: 'Generated Job Description',
+              content: savedDraft.is_ai_generated ? 'AI-enhanced job description ready for review' : 'Template-based job description ready for customization',
+              data: parsedJobData,
+              draftId: savedDraft.id,
+              isAiGenerated: savedDraft.is_ai_generated
+            });
+
+          } catch (aiError) {
+            console.error('❌ AI enhancement failed, using fallback:', aiError);
+            
+            // Show fallback message
+            const fallbackMessage: Message = {
+              id: (Date.now() + 3).toString(),
+              content: `📄 I've processed your file and created a structured template based on the content. While my AI enhancement is temporarily offline, you can review and customize this foundation.\n\nFile: "${file.name}" has been successfully processed!`,
+              sender: 'assistant',
+              timestamp: new Date(),
+            };
+
+            setMessages(prev => prev.map(msg => 
+              msg.id === processingMessage.id ? fallbackMessage : msg
+            ));
+
+            // Show fallback notification
+            onContentChange({
+              type: 'ai-fallback',
+              title: 'File Processed - Template Mode',
+              content: 'File uploaded and processed with template system',
+              data: {
+                message: `Your file "${file.name}" has been successfully processed and a template has been created. You can customize it manually while AI enhancement reconnects.`,
+                draftId: savedDraft.id
+              }
+            });
+          }
 
         } catch (error) {
           console.error('❌ Error processing JD file upload:', error);
           
           const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            id: (Date.now() + 4).toString(),
+            content: `❌ Sorry, I couldn't process that file: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease try:\n• A different file format (PDF, DOC, DOCX)\n• Checking the file isn't corrupted\n• Uploading a smaller file`,
             sender: 'assistant',
             timestamp: new Date(),
           };

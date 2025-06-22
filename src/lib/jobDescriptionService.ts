@@ -1,14 +1,17 @@
 // Job Description Service - Handle JD input processing and generation
 import { supabase } from '@/lib/supabase';
 import { generateJobDescription as aiGenerateJobDescription } from './ai';
+import { parseJDInput, type JDInputDetection } from './jdInputDetection';
 
 export interface JDInput {
-  type: 'brief' | 'upload' | 'link';
+  type: 'briefWithLink' | 'briefOnly' | 'referenceLink' | 'upload';
   content: string;
   metadata?: {
     fileName?: string;
     fileType?: string;
     url?: string;
+    brief?: string;
+    link?: string;
   };
 }
 
@@ -16,13 +19,19 @@ export interface JDDraft {
   id: string;
   user_id: string;
   input_type: string;
+  input_summary: string;
   raw_input: string;
   content?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
   generated_jd?: string;
   error_message?: string;
+  has_fallback?: boolean;
+  is_ai_generated?: boolean;
   created_at: string;
   updated_at: string;
+  file_name?: string;
+  file_type?: string;
+  url?: string;
 }
 
 // URL validation
@@ -84,7 +93,49 @@ export function validateBriefInput(brief: string): { isValid: boolean; reason?: 
   return { isValid: true };
 }
 
-// Process JD input and save to database
+// Generate input summary based on input type and content
+function generateInputSummary(inputType: string, content: string, metadata?: any): string {
+  switch (inputType) {
+    case 'briefWithLink':
+      return 'Brief + link provided';
+    case 'briefOnly':
+      return 'Job brief provided';
+    case 'referenceLink':
+      return 'Reference job link provided';
+    case 'upload':
+      return 'JD file uploaded';
+    default:
+      return 'Job description input provided';
+  }
+}
+
+// Validate required fields before database insert
+function validateRequiredFields(data: {
+  user_id: string;
+  input_type: string;
+  input_summary: string;
+  raw_input: string;
+}): { isValid: boolean; error?: string } {
+  if (!data.user_id || typeof data.user_id !== 'string') {
+    return { isValid: false, error: 'User ID is required' };
+  }
+  
+  if (!data.input_type || typeof data.input_type !== 'string') {
+    return { isValid: false, error: 'Input type is required' };
+  }
+  
+  if (!data.input_summary || typeof data.input_summary !== 'string' || data.input_summary.trim().length === 0) {
+    return { isValid: false, error: 'Input summary is required and cannot be empty' };
+  }
+  
+  if (!data.raw_input || typeof data.raw_input !== 'string' || data.raw_input.trim().length === 0) {
+    return { isValid: false, error: 'Raw input is required and cannot be empty' };
+  }
+  
+  return { isValid: true };
+}
+
+// Process JD input and save to database with fallback support
 export async function processJDInput(
   userId: string,
   inputType: 'brief' | 'upload' | 'link',
@@ -96,70 +147,126 @@ export async function processJDInput(
     let fileName: string | undefined;
     let fileType: string | undefined;
     let url: string | undefined;
+    let detectedInputType: string;
+    let inputSummary: string;
 
     if (inputType === 'upload' && input instanceof File) {
       // Handle file upload
       fileName = input.name;
       fileType = input.name.split('.').pop()?.toLowerCase();
-      
-      // For now, we'll store the file name and type
-      // In a real implementation, you'd extract text from the file
       rawInput = `File upload: ${fileName}`;
       content = `Uploaded file: ${fileName} (${fileType})`;
+      detectedInputType = 'upload';
+      inputSummary = generateInputSummary('upload', rawInput);
       
-      // TODO: Implement actual file text extraction
-      console.log('File upload processing not yet implemented');
+      console.log('📄 File upload processing - storing metadata only');
       
-    } else if (inputType === 'link' && typeof input === 'string') {
-      // Handle URL input
-      url = input;
-      rawInput = input;
+    } else if (typeof input === 'string') {
+      rawInput = input.trim();
       
-      // TODO: Implement URL content fetching
-      content = `URL content from: ${input}`;
-      console.log('URL content fetching not yet implemented');
+      // Use intelligent input detection
+      const detection: JDInputDetection = parseJDInput(rawInput);
       
-    } else if (inputType === 'brief' && typeof input === 'string') {
-      // Handle brief text input
-      rawInput = input;
-      content = input;
+      if (detection.inputType === 'briefWithLink') {
+        detectedInputType = 'briefWithLink';
+        content = detection.brief;
+        url = detection.link;
+        inputSummary = generateInputSummary('briefWithLink', rawInput);
+      } else if (detection.inputType === 'referenceLink') {
+        detectedInputType = 'referenceLink';
+        url = detection.link;
+        content = `Reference URL: ${url}`;
+        inputSummary = generateInputSummary('referenceLink', rawInput);
+      } else if (detection.inputType === 'briefOnly') {
+        detectedInputType = 'briefOnly';
+        content = detection.brief || rawInput;
+        inputSummary = generateInputSummary('briefOnly', rawInput);
+      } else {
+        // Unknown input type - treat as brief
+        detectedInputType = 'briefOnly';
+        content = rawInput;
+        inputSummary = 'Job description input provided';
+      }
+      
     } else {
       throw new Error('Invalid input type or input format');
     }
 
+    // Validate required fields before insert
+    const insertData = {
+      user_id: userId,
+      input_type: detectedInputType,
+      input_summary: inputSummary,
+      raw_input: rawInput
+    };
+
+    const validation = validateRequiredFields(insertData);
+    if (!validation.isValid) {
+      console.error('❌ Validation failed:', validation.error);
+      throw new Error(`Validation failed: ${validation.error}`);
+    }
+
+    // Prepare database insert with fallback fields
+    const dbInsert = {
+      user_id: userId,
+      input_type: detectedInputType,
+      input_summary: inputSummary,
+      raw_input: rawInput,
+      content: content,
+      file_name: fileName,
+      file_type: fileType,
+      url: url,
+      status: 'pending',
+      has_fallback: true, // Mark as fallback mode
+      is_ai_generated: false, // Not AI generated yet
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.log('💾 Inserting JD draft with fallback support:', {
+      input_type: detectedInputType,
+      input_summary: inputSummary,
+      has_fallback: true,
+      is_ai_generated: false
+    });
+
     // Save to database
     const { data, error } = await supabase
       .from('jd_drafts')
-      .insert({
-        user_id: userId,
-        input_type: inputType,
-        raw_input: rawInput,
-        content: content,
-        file_name: fileName,
-        file_type: fileType,
-        url: url,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+      .insert(dbInsert)
       .select()
       .single();
 
     if (error) {
-      console.error('Error saving JD input:', error);
-      return null;
+      console.error('❌ Database insert error:', error);
+      
+      // Provide helpful error message based on error type
+      if (error.code === '23502') { // NOT NULL violation
+        const missingField = error.message.match(/column "([^"]+)"/)?.[1];
+        throw new Error(`Required field missing: ${missingField}. Please ensure all necessary information is provided.`);
+      } else if (error.code === '23505') { // Unique violation
+        throw new Error('A draft with this information already exists. Please modify your input or delete the existing draft.');
+      } else {
+        throw new Error(`Database error: ${error.message}`);
+      }
     }
 
+    console.log('✅ JD draft saved successfully with ID:', data.id);
     return data as JDDraft;
+
   } catch (error) {
-    console.error('Error processing JD input:', error);
+    console.error('❌ Error processing JD input:', error);
+    
+    // Return null instead of throwing to allow graceful handling
     return null;
   }
 }
 
-// Generate JD from saved draft
+// Generate JD from saved draft with enhanced fallback handling
 export async function generateJDFromInput(draft: JDDraft): Promise<string> {
   try {
+    console.log('🤖 Starting JD generation for draft:', draft.id);
+    
     // Update status to processing
     await supabase
       .from('jd_drafts')
@@ -171,7 +278,7 @@ export async function generateJDFromInput(draft: JDDraft): Promise<string> {
 
     let prompt: string;
     
-    if (draft.input_type === 'brief') {
+    if (draft.input_type === 'briefOnly') {
       prompt = `Create a comprehensive, professional job description based on this brief:
 
 ${draft.content}
@@ -187,8 +294,24 @@ Please generate a well-structured job description that includes:
 
 Make it inclusive, engaging, and suitable for the nonprofit sector.`;
 
-    } else if (draft.input_type === 'link') {
-      prompt = `Based on the content from this URL: ${draft.url}
+    } else if (draft.input_type === 'briefWithLink') {
+      prompt = `Create a comprehensive job description based on this brief and organization information:
+
+JOB BRIEF:
+${draft.content}
+
+ORGANIZATION WEBSITE:
+${draft.url}
+
+Please generate a job description that:
+- Aligns with the organization's mission and values
+- Incorporates the brief requirements
+- Uses the organization's context and background
+- Follows nonprofit sector best practices
+- Is engaging for mission-driven candidates`;
+
+    } else if (draft.input_type === 'referenceLink') {
+      prompt = `Based on the job posting at this URL: ${draft.url}
 
 Create an improved, comprehensive job description that:
 - Enhances clarity and structure
@@ -212,16 +335,30 @@ Please enhance it by:
 - Following nonprofit sector standards`;
 
     } else {
-      throw new Error('Unknown input type');
+      throw new Error(`Unknown input type: ${draft.input_type}`);
     }
 
-    // Generate JD using AI
-    const generatedJD = await aiGenerateJobDescription({
-      title: 'Job Description Generation',
-      description: prompt,
-      content: draft.content || '',
-      url: draft.url || ''
-    });
+    // Try AI generation
+    let generatedJD: string;
+    let isAiGenerated = true;
+    
+    try {
+      generatedJD = await aiGenerateJobDescription({
+        title: 'Job Description Generation',
+        description: prompt,
+        content: draft.content || '',
+        url: draft.url || ''
+      });
+      
+      console.log('✅ AI generation successful');
+      
+    } catch (aiError) {
+      console.warn('⚠️ AI generation failed, using fallback:', aiError);
+      
+      // Fallback job description
+      isAiGenerated = false;
+      generatedJD = generateFallbackJobDescription(draft);
+    }
 
     // Update draft with generated content
     await supabase
@@ -229,14 +366,17 @@ Please enhance it by:
       .update({
         generated_jd: generatedJD,
         status: 'completed',
+        is_ai_generated: isAiGenerated,
+        has_fallback: !isAiGenerated,
         updated_at: new Date().toISOString()
       })
       .eq('id', draft.id);
 
+    console.log(`✅ JD generation completed (AI: ${isAiGenerated})`);
     return generatedJD;
 
   } catch (error) {
-    console.error('Error generating JD:', error);
+    console.error('❌ Error generating JD:', error);
     
     // Update status to failed
     await supabase
@@ -244,12 +384,56 @@ Please enhance it by:
       .update({
         status: 'failed',
         error_message: error instanceof Error ? error.message : 'Unknown error',
+        has_fallback: true,
+        is_ai_generated: false,
         updated_at: new Date().toISOString()
       })
       .eq('id', draft.id);
 
     throw error;
   }
+}
+
+// Generate fallback job description when AI is unavailable
+function generateFallbackJobDescription(draft: JDDraft): string {
+  const orgName = draft.url ? extractDomain(draft.url) : 'Mission-driven Organization';
+  
+  return `# Job Opportunity at ${orgName}
+
+## About the Role
+${draft.content || 'We are seeking a dedicated professional to join our mission-driven team and contribute to meaningful social impact work.'}
+
+## About the Organization
+${orgName} is committed to creating positive change and making a difference in the communities we serve.
+
+## Key Responsibilities
+- Support organizational mission and strategic objectives
+- Collaborate with team members on key initiatives
+- Contribute to program development and implementation
+- Engage with stakeholders and community partners
+- Maintain high standards of professional excellence
+
+## Qualifications & Experience
+- Bachelor's degree or equivalent experience
+- 2-3 years of relevant experience in nonprofit or development sector
+- Strong communication and interpersonal skills
+- Passion for social impact and mission-driven work
+- Ability to work collaboratively in a team environment
+- Commitment to diversity, equity, and inclusion
+
+## What We Offer
+- Competitive salary commensurate with experience
+- Comprehensive benefits package
+- Professional development opportunities
+- Meaningful work with direct impact
+- Supportive and inclusive work environment
+
+## How to Apply
+Please submit your CV and cover letter explaining your interest in this role and our mission.
+
+${draft.url ? `To learn more about our organization, visit: ${draft.url}` : ''}
+
+*This job description was generated in fallback mode. Please review and customize as needed.*`;
 }
 
 // Get JD draft by ID
