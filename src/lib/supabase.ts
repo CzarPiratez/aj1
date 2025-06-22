@@ -1,13 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Use NEXT_PUBLIC_ prefixed environment variables for client-side access
-const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 console.log('🔧 Supabase Config Check:', {
-  url: supabaseUrl ? `✅ Set (${supabaseUrl})` : '❌ Missing NEXT_PUBLIC_SUPABASE_URL',
-  key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing NEXT_PUBLIC_SUPABASE_ANON_KEY',
-  envVars: Object.keys(import.meta.env).filter(key => key.startsWith('NEXT_PUBLIC_'))
+  url: supabaseUrl ? `✅ Set (${supabaseUrl})` : '❌ Missing VITE_SUPABASE_URL',
+  key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing VITE_SUPABASE_ANON_KEY',
+  envVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
 });
 
 // Expected correct values
@@ -25,8 +25,8 @@ const hasValidCredentials = supabaseUrl &&
 if (!hasValidCredentials) {
   console.error('❌ Missing or invalid Supabase environment variables');
   console.error('Please check your .env file and ensure you have:');
-  console.error('NEXT_PUBLIC_SUPABASE_URL=https://vsactuzdnmbqatvghyli.supabase.co');
-  console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
+  console.error('VITE_SUPABASE_URL=https://vsactuzdnmbqatvghyli.supabase.co');
+  console.error('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
   console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
   
   if (supabaseUrl !== EXPECTED_URL) {
