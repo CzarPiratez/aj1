@@ -8,7 +8,6 @@ import {
   Target, 
   RotateCcw, 
   Building, 
-  Briefcase, 
   Users, 
   Search, 
   Eye, 
@@ -152,15 +151,6 @@ export function CategorizedToolDropdowns({
       action: () => onToolAction('generate-org-profile', 'Help me create an organization profile')
     },
     {
-      id: 'post-job-generate-jd',
-      label: '📌 Post a Job / Generate JD',
-      icon: Briefcase,
-      description: 'Create and post job descriptions with AI assistance',
-      isActive: () => true,
-      inactiveMessage: '',
-      action: () => onToolAction('post-job-generate-jd', 'POST_JD_TOOL_TRIGGER') // Special trigger message
-    },
-    {
       id: 'match-candidates',
       label: 'Match Candidates',
       icon: Users,
@@ -276,7 +266,7 @@ export function CategorizedToolDropdowns({
   return (
     <div className="flex items-center space-x-2">
       {renderDropdown(cvTools, 'CV', FileText, 'CV and cover letter tools')}
-      {renderDropdown(jobsTools, 'Jobs', Briefcase, 'Job search and career development tools')}
+      {renderDropdown(jobsTools, 'Jobs', Target, 'Job search and career development tools')}
       {renderDropdown(organizationTools, 'Organization', Building, 'Organization and hiring tools')}
     </div>
   );
