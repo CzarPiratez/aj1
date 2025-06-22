@@ -34,7 +34,8 @@ import {
   Activity,
   Brain,
   Compass as CompassIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
+  Shield
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,11 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
     // Check AI status
     checkAIStatus().then(setAiStatus);
   }, []);
+
+  // Check if this is a developer (you can customize this logic)
+  const isDeveloper = profile?.email === 'developer@aidjobs.com' || 
+                     window.location.hostname === 'localhost' ||
+                     window.location.hostname.includes('127.0.0.1');
 
   return (
     <div className="h-full overflow-auto" style={{ backgroundColor: '#F9F7F4' }}>
@@ -101,6 +107,21 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
                   <span className="text-xs" style={{ color: '#66615C' }}>
                     AI Engine: {aiStatus.available ? 'Online' : 'Offline'} ({aiStatus.model})
                   </span>
+                </div>
+              )}
+
+              {/* Developer Debug Link */}
+              {isDeveloper && (
+                <div className="flex items-center mt-2 space-x-2">
+                  <Shield className="w-3 h-3" style={{ color: '#D5765B' }} />
+                  <a 
+                    href="/dev/auth-debug" 
+                    target="_blank"
+                    className="text-xs hover:underline"
+                    style={{ color: '#D5765B' }}
+                  >
+                    🔐 Auth Debug Tool
+                  </a>
                 </div>
               )}
             </div>
