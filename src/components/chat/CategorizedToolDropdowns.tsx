@@ -158,7 +158,7 @@ export function CategorizedToolDropdowns({
       description: 'Generate a high-quality job description using AI',
       isActive: () => true,
       inactiveMessage: '',
-      message: 'POST_JD_TOOL_TRIGGER' // Special trigger for JD tool
+      message: 'Welcome. Please choose one of the following input types:\n1. Job Brief + org/project link\n2. Job Brief\n3. Upload a JD draft (PDF/DOCX)\n4. Paste a link to a reference job post\n\nI\'ll detect what you\'ve provided and generate a structured, inclusive job description tailored for the nonprofit and development sector.'
     },
     {
       id: 'match-candidates',
