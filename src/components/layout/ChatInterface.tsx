@@ -513,10 +513,10 @@ This is a mock improvement - in production, we would extract and enhance the act
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the updated assistant message immediately
+      // Send the updated assistant message immediately (without bold formatting)
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Job Brief + Organization or Project Link**\n2. **Job Brief**\n3. **Upload a JD Draft** (PDF or DOCX)\n4. **Paste a Link** to a reference job post\n\nGo ahead and share whichever works best for you — I'll take it from there.",
+        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. Job Brief + Organization or Project Link\n2. Job Brief\n3. Upload a JD Draft (PDF or DOCX)\n4. Paste a Link to a reference job post\n\nGo ahead and share whichever works best for you — I'll take it from there.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
