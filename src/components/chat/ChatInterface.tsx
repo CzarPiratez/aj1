@@ -319,10 +319,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the smart assistant message
+      // Send the updated assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Job Brief + Organization or Project Link**  \n2. **Job Brief**  \n3. **Upload a JD Draft** (PDF or DOCX)  \n4. **Paste a Link** to a reference job post\n\nGo ahead and share whichever works best for you — I'll take it from there.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
