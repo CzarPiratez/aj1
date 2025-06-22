@@ -148,7 +148,7 @@ export function CategorizedToolDropdowns({
       id: 'post-job-generate-jd',
       label: 'Post a Job / Generate JD',
       icon: Briefcase,
-      description: 'Generate a high-quality job description using AI.',
+      description: 'Generate a high-quality, inclusive job description using AI. Paste a job brief, upload an old JD, or share a link.',
       isActive: () => true,
       inactiveMessage: '',
       autoSubmitMessage: "Hi! Let's begin — I'm ready for your input."
@@ -167,18 +167,19 @@ export function CategorizedToolDropdowns({
   const handleToolClick = (tool: Tool) => {
     const isActive = tool.isActive(flags);
     
-    if (isActive) {
-      // Check if this is an organization tool with auto-submit message
-      if (tool.autoSubmitMessage && onAutoSubmit) {
-        console.log(`🚀 Auto-submitting organization tool: ${tool.id}`);
-        onAutoSubmit(tool.autoSubmitMessage);
-      } else {
-        // Regular tool behavior (no auto-submit)
-        console.log(`🔧 Tool clicked: ${tool.id} - Regular behavior`);
-        onToolAction(tool.id, '');
-      }
-    } else {
+    if (!isActive) {
       onInactiveToolClick(tool.inactiveMessage);
+      return;
+    }
+
+    // Check if this is an organization tool with auto-submit message
+    if (tool.autoSubmitMessage && onAutoSubmit) {
+      console.log(`🚀 Auto-submitting organization tool: ${tool.id}`);
+      onAutoSubmit(tool.autoSubmitMessage);
+    } else {
+      // Regular tool behavior (no auto-submit)
+      console.log(`🔧 Tool clicked: ${tool.id} - Regular behavior`);
+      onToolAction(tool.id, '');
     }
   };
 

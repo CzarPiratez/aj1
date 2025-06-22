@@ -432,11 +432,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
-  // CLEANED UP: Removed all setInput() and auto-submit logic
+  // Regular tool action handler (for non-auto-submit tools)
   const handleToolAction = (toolId: string, message: string) => {
-    console.log(`🔧 Tool clicked: ${toolId}`);
-    // Tools will be handled by the new auto-submit system in the next implementation
-    // For now, tools do nothing to prevent any input field staging
+    console.log(`🔧 Regular tool clicked: ${toolId}`);
+    // Regular tools do nothing for now to prevent input field staging
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -450,15 +449,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setMessages(prev => [...prev, inactiveMessage]);
   };
 
-  // NEW: Handle auto-submit for organization tools
+  // Auto-submit handler for organization tools
   const handleAutoSubmit = (message: string) => {
     console.log('🚀 Auto-submitting message:', message);
     
-    // Check if this is the JD tool message
-    if (message.includes("Let's get started on your job description")) {
-      setAwaitingJDInput(true); // Set the waiting state for input detection
+    // Check if this is the JD tool message to set awaiting state
+    if (message === "Hi! Let's begin — I'm ready for your input.") {
+      setAwaitingJDInput(true);
     }
     
+    // Call handleSend directly with the message
     handleSend(message);
   };
 
