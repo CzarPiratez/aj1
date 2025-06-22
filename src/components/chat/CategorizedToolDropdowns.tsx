@@ -153,22 +153,12 @@ export function CategorizedToolDropdowns({
     },
     {
       id: 'post-job-generate-jd',
-      label: 'Post a Job / Generate JD',
+      label: '📌 Post a Job / Generate JD',
       icon: Briefcase,
-      description: 'Create and post job descriptions with AI assistance',
+      description: 'Generate a high-quality, inclusive job description using AI. Paste a job brief, upload an old JD, or share a link.',
       isActive: () => true,
       inactiveMessage: '',
-      action: () => onToolAction('post-job-generate-jd', `Let's get started on your job description. You can choose how you'd like to begin:
-
-Paste a brief + website or project link — I'll use both to craft a highly tailored JD.
-
-Upload a JD draft you've written — I'll refine and improve it.
-
-Paste a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.
-
-Paste a brief only — I'll build from that.
-
-Let me know which option you'd like to use to begin. You can also upload a file directly if that's easier.`)
+      action: () => onToolAction('post-job-generate-jd', "Hi! 👋 Please paste your job brief, upload a JD draft, or share a link to an old job posting. I'll generate a structured job description for you.")
     },
     {
       id: 'match-candidates',

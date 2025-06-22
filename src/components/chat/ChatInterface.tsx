@@ -20,17 +20,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { 
-  generateInitialJD, 
-  retryJDGeneration, 
-  checkJDGenerationStatus,
-  classifyJDInput,
-  extractUrlFromInput,
-  extractBriefFromInput,
-  refineUploadedJD
-} from '@/lib/jobDescriptionGenerator';
-import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
+import { parseJobDescription } from '@/lib/jobDescriptionParser';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -56,20 +47,6 @@ interface ChatInterfaceProps {
   profile?: any;
 }
 
-// Input classification function
-function classifyInputType(input: string): 'brief_with_link' | 'link_only' | 'brief_only' | 'invalid' {
-  const urlRegex = /(https?:\/\/[^\s]+)/;
-  const hasLink = urlRegex.test(input);
-  const plainText = input.replace(urlRegex, '').trim();
-  const longEnough = input.length > 30 || input.split(' ').length > 6;
-  const hasMeaningfulText = plainText.length > 20 || plainText.split(' ').length > 4;
-
-  if (hasLink && hasMeaningfulText) return 'brief_with_link';
-  if (hasLink && !hasMeaningfulText) return 'link_only';
-  if (longEnough) return 'brief_only';
-  return 'invalid';
-}
-
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
   const { flags, loading: progressLoading, updateFlag, updateFlags } = useUserProgress(profile?.id);
   
@@ -87,7 +64,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isProcessingJD, setIsProcessingJD] = useState(false);
-  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   
@@ -117,46 +93,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     checkAIConnectivity();
   }, []);
 
-  // Check for failed JD generation on component mount
-  useEffect(() => {
-    if (profile?.id) {
-      checkForFailedJDGeneration();
-    }
-  }, [profile?.id]);
-
   const checkAIConnectivity = async () => {
     try {
       const status = await checkAIStatus();
       setAiConnected(status.available);
     } catch (error) {
       setAiConnected(false);
-    }
-  };
-
-  const checkForFailedJDGeneration = async () => {
-    if (!profile?.id) return;
-
-    try {
-      const status = await checkJDGenerationStatus(profile.id);
-      
-      if (status.hasFailed && status.latestDraft) {
-        // Show retry option
-        const retryMessage: Message = {
-          id: `retry-${Date.now()}`,
-          content: "I noticed your previous job description generation didn't complete successfully. Would you like me to try again with your previous input?",
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'retry-option',
-          metadata: {
-            canRetry: true,
-            retryDraftId: status.latestDraft.id
-          }
-        };
-
-        setMessages(prev => [...prev, retryMessage]);
-      }
-    } catch (error) {
-      console.error('Error checking JD generation status:', error);
     }
   };
 
@@ -173,21 +115,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput('');
-
-    // Check if we're awaiting JD input
-    if (awaitingJDInput) {
-      await handleJDInputResponse(currentInput);
-      return;
-    }
-
-    // Check for retry request
-    if (currentInput.toLowerCase().includes('try again') || currentInput.toLowerCase().includes('retry')) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.type === 'retry-option' && lastMessage.metadata?.retryDraftId) {
-        await handleJDRetry(lastMessage.metadata.retryDraftId);
-        return;
-      }
-    }
 
     setIsTyping(true);
 
@@ -222,431 +149,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
-    }
-  };
-
-  const handleJDInputResponse = async (userInput: string) => {
-    console.log('🎯 Processing JD input response:', userInput);
-    
-    // Validate input length first
-    const trimmed = userInput.trim();
-    const wordCount = trimmed.split(/\s+/).filter(word => word.length > 0).length;
-    
-    if (trimmed.length < 30 || wordCount < 6) {
-      const clarificationMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Could you add a bit more detail? For example:
-"We need a Gender Expert for a livelihood project in Kenya with 10–13 years of experience in grants and M&E."`,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'jd-request'
-      };
-
-      setMessages(prev => [...prev, clarificationMessage]);
-      return;
-    }
-
-    // Classify input type
-    const inputType = classifyInputType(userInput);
-    
-    // Respond based on input type
-    let responseMessage = '';
-    if (inputType === 'brief_with_link') {
-      responseMessage = "Great! I'll use the details and website you shared to create an aligned JD.";
-    } else if (inputType === 'link_only') {
-      responseMessage = `Perfect! I'm fetching the job post from: ${extractUrlFromInput(userInput)}...`;
-    } else if (inputType === 'brief_only') {
-      responseMessage = "Got it. I'll create a job description draft based on what you shared.";
-    } else {
-      const clarificationMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Could you add a bit more detail? For example:
-"We need a Gender Expert for a livelihood project in Kenya with 10–13 years of experience in grants and M&E."`,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'jd-request'
-      };
-
-      setMessages(prev => [...prev, clarificationMessage]);
-      return;
-    }
-
-    // Show initial response
-    const initialResponse: Message = {
-      id: (Date.now() + 1).toString(),
-      content: responseMessage,
-      sender: 'assistant',
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, initialResponse]);
-
-    // Save input to database
-    await saveJDInputToDatabase(userInput);
-
-    // Show processing message
-    const processingMessage: Message = {
-      id: (Date.now() + 2).toString(),
-      content: "Thanks! I'm working on your first draft now. Give me a few seconds...",
-      sender: 'assistant',
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, processingMessage]);
-
-    setIsProcessingJD(true);
-    setAwaitingJDInput(false);
-
-    try {
-      // Use the new generateInitialJD function
-      const result = await generateInitialJD(userInput, profile.id);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to generate job description');
-      }
-
-      // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(result.generatedJD!);
-
-      // Create final message with job description
-      const jobMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: result.generatedJD!,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'job-description',
-        metadata: {
-          jdDraftId: result.jdDraft!.id,
-          jobData: parsedJobData,
-        }
-      };
-
-      // Replace processing message with final result
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id ? jobMessage : msg
-      ));
-
-      // Show success message
-      const successMessage: Message = {
-        id: (Date.now() + 4).toString(),
-        content: "🎉 Here's your first draft! You can now refine, update tone, or view SDG alignment. The job description is ready for review and publishing.",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
-
-      setMessages(prev => [...prev, successMessage]);
-
-      // Show the structured JD in the right panel
-      onContentChange({
-        type: 'job-description',
-        title: 'Generated Job Description',
-        content: 'AI-generated job description ready for review',
-        data: parsedJobData,
-        draftId: result.jdDraft!.id
-      });
-
-      console.log('✅ JD generation completed successfully');
-
-    } catch (error) {
-      console.error('❌ Error processing JD input:', error);
-      
-      // Show error message with retry option
-      const errorMessage: Message = {
-        id: (Date.now() + 4).toString(),
-        content: `⚠️ Oops — something went wrong while processing your input.
-
-This might be due to a connection issue or a formatting problem. Please try again, or paste your input in a simpler format.
-
-If the problem persists, let us know and we'll fix it.`,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'retry-option',
-        metadata: {
-          canRetry: true
-        }
-      };
-
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id ? errorMessage : msg
-      ));
-    } finally {
-      setIsProcessingJD(false);
-    }
-  };
-
-  const saveJDInputToDatabase = async (userInput: string) => {
-    if (!profile?.id) return;
-
-    try {
-      // Update progress flags
-      await updateFlag('has_started_jd', true);
-      await updateFlag('has_submitted_jd_inputs', true);
-
-      // Classify input type for database
-      const inputType = classifyInputType(userInput);
-      let sourceType = 'brief';
-      
-      switch (inputType) {
-        case 'brief_with_link':
-          sourceType = 'brief+link';
-          break;
-        case 'link_only':
-          sourceType = 'link';
-          break;
-        case 'brief_only':
-          sourceType = 'brief';
-          break;
-        default:
-          sourceType = 'brief';
-      }
-
-      // Save to jd_drafts table
-      const { error } = await supabase
-        .from('jd_drafts')
-        .insert({
-          user_id: profile.id,
-          input_summary: userInput.substring(0, 500),
-          input_type: sourceType,
-          content: userInput,
-          url: extractUrlFromInput(userInput),
-          status: 'pending'
-        });
-
-      if (error) {
-        console.error('Error saving JD input:', error);
-      }
-    } catch (error) {
-      console.error('Error in saveJDInputToDatabase:', error);
-    }
-  };
-
-  const handleJDRetry = async (draftId?: string) => {
-    if (!profile?.id) return;
-
-    setIsProcessingJD(true);
-
-    try {
-      const processingMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `🔄 Retrying job description generation with DeepSeek Chat V3...\n\n🤖 Generating your professional JD...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, processingMessage]);
-
-      let result;
-      if (draftId) {
-        // Retry specific draft
-        result = await retryJDGeneration(draftId, profile.id);
-      } else {
-        // This shouldn't happen, but handle gracefully
-        throw new Error('No draft ID provided for retry');
-      }
-
-      if (!result.success) {
-        throw new Error(result.error || 'Retry failed');
-      }
-
-      // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(result.generatedJD!);
-
-      // Create final message with job description
-      const jobMessage: Message = {
-        id: (Date.now() + 2).toString(),
-        content: result.generatedJD!,
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'job-description',
-        metadata: {
-          jdDraftId: draftId,
-          jobData: parsedJobData,
-        }
-      };
-
-      // Replace processing message with final result
-      setMessages(prev => prev.map(msg => 
-        msg.id === processingMessage.id ? jobMessage : msg
-      ));
-
-      // Show success message
-      const successMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: "🎉 Success! Here's your job description. You can now refine, update tone, or view SDG alignment.",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
-
-      setMessages(prev => [...prev, successMessage]);
-
-      // Show the structured JD in the right panel
-      onContentChange({
-        type: 'job-description',
-        title: 'Generated Job Description',
-        content: 'AI-generated job description ready for review',
-        data: parsedJobData,
-        draftId: draftId
-      });
-
-    } catch (error) {
-      console.error('❌ Error retrying JD generation:', error);
-      
-      const errorMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: `❌ ${error instanceof Error ? error.message : 'Sorry, the retry also failed. Please try again in a few minutes.'}`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsProcessingJD(false);
-    }
-  };
-
-  const handleFileUpload = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Check if we're in JD mode and this is a supported file type
-    if (awaitingJDInput) {
-      const allowedTypes = ['doc', 'docx', 'pdf', 'txt'];
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension && allowedTypes.includes(fileExtension)) {
-        // Process as JD file upload
-        setIsProcessingJD(true);
-        setAwaitingJDInput(false);
-
-        try {
-          const processingMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: `📄 Thanks for uploading. I'll analyze and improve your existing JD.
-
-Thanks! I'm working on your first draft now. Give me a few seconds...`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, processingMessage]);
-
-          // Extract file content
-          const fileContent = await extractFileContent(file);
-
-          // Save to database
-          await saveJDInputToDatabase(`Uploaded file: ${file.name}`);
-
-          // Use refineUploadedJD function
-          const generatedJD = await refineUploadedJD(fileContent, file.name);
-          
-          // Parse the generated JD into structured data
-          const parsedJobData = parseJobDescription(generatedJD);
-
-          // Create final message with improved job description
-          const jobMessage: Message = {
-            id: (Date.now() + 2).toString(),
-            content: generatedJD,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'job-description',
-            metadata: {
-              jobData: parsedJobData,
-            }
-          };
-
-          // Replace processing message with final result
-          setMessages(prev => prev.map(msg => 
-            msg.id === processingMessage.id ? jobMessage : msg
-          ));
-
-          // Show the structured JD in the right panel
-          onContentChange({
-            type: 'job-description',
-            title: 'Generated Job Description',
-            content: 'AI-generated job description ready for review',
-            data: parsedJobData
-          });
-
-        } catch (error) {
-          console.error('❌ Error processing JD file upload:', error);
-          
-          const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `⚠️ Oops — something went wrong while processing your input.
-
-This might be due to a connection issue or a formatting problem. Please try again, or paste your input in a simpler format.
-
-If the problem persists, let us know and we'll fix it.`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, errorMessage]);
-        } finally {
-          setIsProcessingJD(false);
-        }
-
-        e.target.value = '';
-        return;
-      }
-    }
-
-    // Regular file upload handling (CV, etc.)
-    const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    
-    if (!allowedTypes.includes(fileExtension)) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `Sorry, only ${allowedTypes.join(', ')} files are supported.`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-      return;
-    }
-
-    if (file.name.toLowerCase().includes('cv') || file.name.toLowerCase().includes('resume')) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: "Perfect! I've received your CV. Let me analyze it for you...",
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-      
-      try {
-        await updateFlag('has_uploaded_cv', true);
-        setTimeout(async () => {
-          await updateFlag('has_analyzed_cv', true);
-        }, 2000);
-      } catch (error) {
-        console.error('Error updating CV upload progress:', error);
-        toast.error('Failed to update progress. Please try again.');
-      }
-    } else {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: `I've received your ${fileExtension} file: "${file.name}". How would you like me to help you with this document?`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      }]);
-    }
-
-    e.target.value = '';
-  };
-
-  // Helper function to extract file content
-  const extractFileContent = async (file: File): Promise<string> => {
-    try {
-      const text = await file.text();
-      return text.substring(0, 5000); // Limit to first 5000 characters
-    } catch (error) {
-      throw new Error('Failed to extract content from file');
     }
   };
 
@@ -747,6 +249,57 @@ If the problem persists, let us know and we'll fix it.`,
     }
   };
 
+  const handleFileUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Regular file upload handling (CV, etc.)
+    const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+    
+    if (!allowedTypes.includes(fileExtension)) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: `Sorry, only ${allowedTypes.join(', ')} files are supported.`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+      return;
+    }
+
+    if (file.name.toLowerCase().includes('cv') || file.name.toLowerCase().includes('resume')) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: "Perfect! I've received your CV. Let me analyze it for you...",
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+      
+      try {
+        await updateFlag('has_uploaded_cv', true);
+        setTimeout(async () => {
+          await updateFlag('has_analyzed_cv', true);
+        }, 2000);
+      } catch (error) {
+        console.error('Error updating CV upload progress:', error);
+        toast.error('Failed to update progress. Please try again.');
+      }
+    } else {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: `I've received your ${fileExtension} file: "${file.name}". How would you like me to help you with this document?`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+    }
+
+    e.target.value = '';
+  };
+
   const toggleRecording = () => {
     setIsRecording(!isRecording);
   };
@@ -754,26 +307,13 @@ If the problem persists, let us know and we'll fix it.`,
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool
+    // For JD tool, just send the message directly
     if (toolId === 'post-job-generate-jd') {
-      console.log('🎯 JD Tool triggered');
-      
-      // Update progress flag
-      updateFlag('has_started_jd', true);
-      
-      // Set awaiting input state
-      setAwaitingJDInput(true);
-      
-      // Send the exact assistant message as specified
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: message,
         sender: 'assistant',
         timestamp: new Date(),
-        type: 'jd-request',
-        metadata: {
-          isJDRequest: true
-        }
       };
       
       setMessages(prev => [...prev, jdRequestMessage]);
@@ -1076,7 +616,7 @@ If the problem persists, let us know and we'll fix it.`,
           <input
             ref={fileInputRef}
             type="file"
-            accept={awaitingJDInput ? ".doc,.docx,.pdf,.txt" : ".pdf,.docx,.txt,.json"}
+            accept=".pdf,.docx,.txt,.json"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -1101,7 +641,7 @@ If the problem persists, let us know and we'll fix it.`,
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder="Ask me anything about jobs, CVs, or matches..."
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -1134,23 +674,16 @@ If the problem persists, let us know and we'll fix it.`,
               style={{ borderColor: '#F1EFEC' }}
             >
               <div className="flex items-center space-x-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleFileUpload}
-                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                      style={{ color: '#66615C' }}
-                      disabled={isTyping || isProcessingJD}
-                    >
-                      <Paperclip className="w-2.5 h-2.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    {awaitingJDInput ? 'Upload JD file (.doc, .docx, .pdf, .txt)' : 'Attach files (.pdf, .docx, .txt, .json)'}
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleFileUpload}
+                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                  style={{ color: '#66615C' }}
+                  disabled={isTyping || isProcessingJD}
+                >
+                  <Paperclip className="w-2.5 h-2.5" />
+                </Button>
 
                 {/* Categorized Tool Dropdowns */}
                 {!progressLoading && (
@@ -1162,30 +695,23 @@ If the problem persists, let us know and we'll fix it.`,
                   />
                 )}
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={toggleRecording}
-                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                      style={{ 
-                        color: isRecording ? '#D5765B' : '#66615C',
-                        backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
-                      }}
-                      disabled={isTyping || isProcessingJD}
-                    >
-                      {isRecording ? (
-                        <Square className="w-2.5 h-2.5" />
-                      ) : (
-                        <Mic className="w-2.5 h-2.5" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    {isRecording ? 'Stop recording' : 'Voice input'}
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleRecording}
+                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                  style={{ 
+                    color: isRecording ? '#D5765B' : '#66615C',
+                    backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
+                  }}
+                  disabled={isTyping || isProcessingJD}
+                >
+                  {isRecording ? (
+                    <Square className="w-2.5 h-2.5" />
+                  ) : (
+                    <Mic className="w-2.5 h-2.5" />
+                  )}
+                </Button>
               </div>
 
               <div className="flex items-center space-x-1 text-xs" style={{ color: '#66615C' }}>
@@ -1201,7 +727,7 @@ If the problem persists, let us know and we'll fix it.`,
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              Press Enter to send, Shift+Enter for new line
             </p>
           </div>
         </div>
