@@ -93,6 +93,20 @@ export function validateBriefInput(brief: string): { isValid: boolean; reason?: 
   return { isValid: true };
 }
 
+// Map internal input types to database-compatible values
+function mapInputTypeForDatabase(internalType: string): string {
+  switch (internalType) {
+    case 'briefWithLink':
+    case 'referenceLink':
+      return 'website'; // Both involve URLs, so map to 'website'
+    case 'briefOnly':
+    case 'upload':
+      return 'manual'; // Both are manual input, so map to 'manual'
+    default:
+      return 'manual'; // Default fallback
+  }
+}
+
 // Generate input summary based on input type and content
 function generateInputSummary(inputType: string, content: string, metadata?: any): string {
   switch (inputType) {
@@ -192,10 +206,13 @@ export async function processJDInput(
       throw new Error('Invalid input type or input format');
     }
 
+    // Map the internal input type to database-compatible value
+    const dbInputType = mapInputTypeForDatabase(detectedInputType);
+
     // Validate required fields before insert
     const insertData = {
       user_id: userId,
-      input_type: detectedInputType,
+      input_type: dbInputType, // Use mapped value
       input_summary: inputSummary,
       raw_input: rawInput
     };
@@ -209,7 +226,7 @@ export async function processJDInput(
     // Prepare database insert with fallback fields
     const dbInsert = {
       user_id: userId,
-      input_type: detectedInputType,
+      input_type: dbInputType, // Use mapped value for database
       input_summary: inputSummary,
       raw_input: rawInput,
       content: content,
@@ -224,7 +241,7 @@ export async function processJDInput(
     };
 
     console.log('💾 Inserting JD draft with fallback support:', {
-      input_type: detectedInputType,
+      input_type: dbInputType, // Log the mapped value
       input_summary: inputSummary,
       has_fallback: true,
       is_ai_generated: false
@@ -278,7 +295,10 @@ export async function generateJDFromInput(draft: JDDraft): Promise<string> {
 
     let prompt: string;
     
-    if (draft.input_type === 'briefOnly') {
+    // Use the original input type logic for generation, not the mapped database value
+    const originalInputType = determineOriginalInputType(draft);
+    
+    if (originalInputType === 'briefOnly') {
       prompt = `Create a comprehensive, professional job description based on this brief:
 
 ${draft.content}
@@ -294,7 +314,7 @@ Please generate a well-structured job description that includes:
 
 Make it inclusive, engaging, and suitable for the nonprofit sector.`;
 
-    } else if (draft.input_type === 'briefWithLink') {
+    } else if (originalInputType === 'briefWithLink') {
       prompt = `Create a comprehensive job description based on this brief and organization information:
 
 JOB BRIEF:
@@ -310,7 +330,7 @@ Please generate a job description that:
 - Follows nonprofit sector best practices
 - Is engaging for mission-driven candidates`;
 
-    } else if (draft.input_type === 'referenceLink') {
+    } else if (originalInputType === 'referenceLink') {
       prompt = `Based on the job posting at this URL: ${draft.url}
 
 Create an improved, comprehensive job description that:
@@ -322,7 +342,7 @@ Create an improved, comprehensive job description that:
 
 Original content: ${draft.content}`;
 
-    } else if (draft.input_type === 'upload') {
+    } else if (originalInputType === 'upload') {
       prompt = `Improve and restructure this job description from the uploaded file:
 
 ${draft.content}
@@ -335,7 +355,7 @@ Please enhance it by:
 - Following nonprofit sector standards`;
 
     } else {
-      throw new Error(`Unknown input type: ${draft.input_type}`);
+      throw new Error(`Unknown input type: ${originalInputType}`);
     }
 
     // Try AI generation
@@ -392,6 +412,27 @@ Please enhance it by:
 
     throw error;
   }
+}
+
+// Determine original input type from draft data for generation logic
+function determineOriginalInputType(draft: JDDraft): string {
+  // If we have both content and URL, it's likely briefWithLink
+  if (draft.content && draft.url && !draft.file_name) {
+    return 'briefWithLink';
+  }
+  
+  // If we have only URL and no file, it's referenceLink
+  if (draft.url && !draft.content && !draft.file_name) {
+    return 'referenceLink';
+  }
+  
+  // If we have file information, it's upload
+  if (draft.file_name || draft.file_type) {
+    return 'upload';
+  }
+  
+  // Default to briefOnly
+  return 'briefOnly';
 }
 
 // Generate fallback job description when AI is unavailable
