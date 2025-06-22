@@ -4,9 +4,11 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
 import { JobDescriptionOutput } from '@/components/jd/JobDescriptionOutput';
+import { AIFallbackNotification } from '@/components/jd/AIFallbackNotification';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface AuthenticatedLayoutProps {
   user: any;
@@ -16,6 +18,7 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
   const [currentPage, setCurrentPage] = useState('workspace');
   const [mainContent, setMainContent] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [isRetryingAI, setIsRetryingAI] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -159,6 +162,63 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     // TODO: Implement job publishing logic
   };
 
+  // Handle AI fallback retry
+  const handleRetryAI = async () => {
+    if (!mainContent?.data?.draftId) return;
+    
+    setIsRetryingAI(true);
+    
+    try {
+      // Simulate retry logic (replace with actual AI retry)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Mock successful retry
+      const retrySuccess = Math.random() > 0.3; // 70% success rate
+      
+      if (retrySuccess) {
+        // Update content to show successful generation
+        setMainContent({
+          ...mainContent,
+          type: 'job-description',
+          title: 'Generated Job Description',
+          content: 'AI-generated job description ready for review',
+          data: {
+            ...mainContent.data,
+            title: 'Successfully Generated Job Description',
+            summary: 'This job description was successfully generated after AI reconnection.',
+            // ... other job data
+          }
+        });
+        
+        toast.success('Job description generated successfully!');
+      } else {
+        throw new Error('AI is still temporarily unavailable');
+      }
+    } catch (error) {
+      console.error('Retry failed:', error);
+      toast.error('AI is still offline. Please try again in a few minutes.');
+    } finally {
+      setIsRetryingAI(false);
+    }
+  };
+
+  // Handle continue manually
+  const handleContinueManually = () => {
+    // Switch to manual editing mode
+    setMainContent({
+      ...mainContent,
+      type: 'job-description-manual',
+      title: 'Manual Job Description Editor',
+      content: 'Continue drafting your job description manually',
+      data: {
+        ...mainContent.data,
+        manualMode: true
+      }
+    });
+    
+    toast.info('Switched to manual editing mode');
+  };
+
   return (
     <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: '#F9F7F4' }}>
       {/* Sidebar - Start closed by default */}
@@ -218,15 +278,49 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               style={{ backgroundColor: '#FFFFFF' }}
             >
               {mainContent ? (
-                mainContent.type === 'job-description' ? (
-                  <JobDescriptionOutput
-                    jobData={mainContent.data}
-                    onSave={handleJobSave}
-                    onPublish={handleJobPublish}
-                  />
-                ) : (
-                  <MainContentRenderer content={mainContent} />
-                )
+                <div className="h-full flex flex-col">
+                  {/* AI Fallback Notification */}
+                  {mainContent.type === 'ai-fallback' && (
+                    <div className="p-6 pb-0">
+                      <AIFallbackNotification
+                        onRetry={handleRetryAI}
+                        onContinueManually={handleContinueManually}
+                        isRetrying={isRetryingAI}
+                        message={mainContent.data?.message}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Main Content */}
+                  <div className="flex-1 overflow-hidden">
+                    {mainContent.type === 'job-description' ? (
+                      <JobDescriptionOutput
+                        jobData={mainContent.data}
+                        onSave={handleJobSave}
+                        onPublish={handleJobPublish}
+                      />
+                    ) : mainContent.type === 'ai-fallback' ? (
+                      <div className="h-full flex items-center justify-center p-6">
+                        <div className="text-center max-w-md">
+                          <h2 
+                            className="text-xl font-medium mb-4"
+                            style={{ color: '#3A3936' }}
+                          >
+                            Ready to Continue
+                          </h2>
+                          <p 
+                            className="text-sm font-light leading-relaxed"
+                            style={{ color: '#66615C' }}
+                          >
+                            Your job brief is safely saved. You can retry AI generation when it's back online, or start drafting manually right away.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <MainContentRenderer content={mainContent} />
+                    )}
+                  </div>
+                </div>
               ) : (
                 <AuthenticatedIndex profile={profile} />
               )}

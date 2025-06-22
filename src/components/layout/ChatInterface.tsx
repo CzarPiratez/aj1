@@ -11,7 +11,8 @@ import {
   FileText,
   Link,
   RefreshCw,
-  Plus
+  Plus,
+  AlertTriangle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -32,7 +33,7 @@ interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline';
+  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline' | 'ai-fallback';
   metadata?: {
     websiteContent?: any;
     jobId?: string;
@@ -41,6 +42,7 @@ interface Message {
     jobData?: any;
     canRetry?: boolean;
     retryDraftId?: string;
+    fallbackData?: any;
   };
 }
 
@@ -69,6 +71,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [awaitingJDInput, setAwaitingJDInput] = useState(false);
+  const [currentJDDraftId, setCurrentJDDraftId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -106,15 +109,145 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   // Helper function to send assistant message
-  const sendAssistantMessage = (content: string, type?: Message['type']) => {
+  const sendAssistantMessage = (content: string, type?: Message['type'], metadata?: any) => {
     const assistantMessage: Message = {
       id: Date.now().toString(),
       content,
       sender: 'assistant',
       timestamp: new Date(),
-      type
+      type,
+      metadata
     };
     setMessages(prev => [...prev, assistantMessage]);
+    return assistantMessage;
+  };
+
+  // Save fallback status to Supabase
+  const saveFallbackStatus = async (draftId: string, inputData: any) => {
+    try {
+      const { error } = await supabase
+        .from('jd_drafts')
+        .update({
+          status: 'failed',
+          error_message: 'AI temporarily unavailable - fallback mode activated',
+          updated_at: new Date().toISOString(),
+          // Store fallback metadata
+          content: JSON.stringify({
+            ...inputData,
+            has_fallback: true,
+            is_ai_generated: false,
+            fallback_reason: 'ai_offline'
+          })
+        })
+        .eq('id', draftId);
+
+      if (error) {
+        console.error('Error saving fallback status:', error);
+      }
+    } catch (error) {
+      console.error('Error in saveFallbackStatus:', error);
+    }
+  };
+
+  // Retry AI generation
+  const retryAIGeneration = async (draftId: string, inputData: any) => {
+    console.log('🔄 Retrying AI generation for draft:', draftId);
+    setIsProcessingJD(true);
+
+    try {
+      // Check AI status first
+      const aiStatus = await checkAIStatus();
+      if (!aiStatus.available) {
+        throw new Error('AI is still offline');
+      }
+
+      // Show retry processing message
+      const retryMessage = sendAssistantMessage(
+        "Great! AI is back online. Let me generate your job description now...",
+        'progress'
+      );
+
+      // Simulate AI generation (replace with actual AI call)
+      setTimeout(async () => {
+        try {
+          // Mock successful generation
+          const generatedJD = `# Regenerated Job Description
+
+## Role Overview
+AI is back online! This job description has been successfully generated using our AI system.
+
+## Key Responsibilities
+- Successfully regenerated after temporary AI downtime
+- Enhanced with full AI capabilities
+- Optimized for nonprofit sector alignment
+
+## Qualifications & Experience
+- Generated with complete AI analysis
+- Inclusive language and DEI considerations
+- Mission-driven focus restored
+
+*Successfully generated after AI reconnection*`;
+
+          const parsedJobData = parseJobDescription(generatedJD);
+          await updateFlag('has_generated_jd', true);
+
+          // Update draft status in database
+          await supabase
+            .from('jd_drafts')
+            .update({
+              generated_jd: generatedJD,
+              status: 'completed',
+              error_message: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', draftId);
+
+          const jobMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: generatedJD,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'job-description',
+            metadata: {
+              jdDraftId: draftId,
+              jobData: parsedJobData,
+            }
+          };
+
+          // Replace retry message with final result
+          setMessages(prev => prev.map(msg => 
+            msg.id === retryMessage.id ? jobMessage : msg
+          ));
+
+          // Update right panel
+          onContentChange({
+            type: 'job-description',
+            title: 'Generated Job Description',
+            content: 'AI-generated job description ready for review',
+            data: parsedJobData,
+            draftId: draftId
+          });
+
+          toast.success('Job description generated successfully!');
+
+        } catch (error) {
+          console.error('Retry failed:', error);
+          sendAssistantMessage(
+            "I'm still having trouble connecting to AI. Your input is safely saved, and you can continue manually or try again later.",
+            'ai-fallback'
+          );
+        }
+      }, 2000);
+
+    } catch (error) {
+      console.error('Error retrying AI generation:', error);
+      sendAssistantMessage(
+        "AI is still temporarily offline. Your job brief is safely saved - you can continue manually or try again in a few minutes.",
+        'ai-fallback'
+      );
+    } finally {
+      setIsProcessingJD(false);
+    }
   };
 
   const handleSend = async () => {
@@ -202,23 +335,57 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Update progress flag
       await updateFlag('has_submitted_jd_inputs', true);
 
+      // Save input to database first
+      const { data: draftData, error: draftError } = await supabase
+        .from('jd_drafts')
+        .insert({
+          user_id: profile.id,
+          input_type: detection.inputType,
+          raw_input: userInput,
+          content: detection.brief || '',
+          url: detection.link || null,
+          status: 'processing',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (draftError) {
+        throw new Error(`Failed to save input: ${draftError.message}`);
+      }
+
+      setCurrentJDDraftId(draftData.id);
+
       // Show processing message with detected input type
-      const processingMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Perfect! I detected: ${getInputTypeDescription(detection)}\n\nI'm now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
+      const processingMessage = sendAssistantMessage(
+        `Perfect! I detected: ${getInputTypeDescription(detection)}\n\nI'm now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
+        'progress'
+      );
 
-      setMessages(prev => [...prev, processingMessage]);
+      // Wrap AI generation in try/catch for fallback handling
+      try {
+        // Check AI status before attempting generation
+        const aiStatus = await checkAIStatus();
+        if (!aiStatus.available) {
+          throw new Error('AI service is currently offline');
+        }
 
-      // Simulate JD generation based on input type (replace with actual implementation)
-      setTimeout(async () => {
-        let generatedJD = '';
+        // Simulate AI generation with potential failure
+        const shouldSimulateFailure = Math.random() < 0.3; // 30% chance of simulated failure for testing
+        
+        if (shouldSimulateFailure) {
+          throw new Error('Simulated AI timeout for testing fallback UX');
+        }
 
-        switch (detection.inputType) {
-          case 'briefWithLink':
-            generatedJD = `# Program Coordinator - Community Development
+        // Simulate successful AI generation
+        setTimeout(async () => {
+          try {
+            let generatedJD = '';
+
+            switch (detection.inputType) {
+              case 'briefWithLink':
+                generatedJD = `# Program Coordinator - Community Development
 
 ## Role Overview
 Based on your job brief and organization link, we are seeking a passionate Program Coordinator to join our community development team. This role offers an exciting opportunity to make a direct impact on local communities while working with a mission-driven organization committed to sustainable development.
@@ -247,10 +414,10 @@ Based on your job brief and organization link, we are seeking a passionate Progr
 Please submit your CV and cover letter explaining your interest in community development work.
 
 *Generated from: Job brief + Organization link*`;
-            break;
+                break;
 
-          case 'briefOnly':
-            generatedJD = `# Field Coordinator - Humanitarian Response
+              case 'briefOnly':
+                generatedJD = `# Field Coordinator - Humanitarian Response
 
 ## Role Overview
 Based on your job brief, we are seeking a dedicated Field Coordinator to support our humanitarian response efforts. This position requires someone passionate about making a difference in crisis-affected communities.
@@ -279,10 +446,10 @@ Based on your job brief, we are seeking a dedicated Field Coordinator to support
 Please submit your application including CV and cover letter.
 
 *Generated from: Job brief only*`;
-            break;
+                break;
 
-          case 'referenceLink':
-            generatedJD = `# Enhanced Job Description
+              case 'referenceLink':
+                generatedJD = `# Enhanced Job Description
 
 ## Role Overview
 Based on the reference job posting you provided, I've created an enhanced version with improved structure, inclusive language, and nonprofit sector alignment.
@@ -306,58 +473,111 @@ Based on the reference job posting you provided, I've created an enhanced versio
 [Improved application instructions with accessibility considerations]
 
 *Generated from: Reference job posting link*`;
-            break;
-        }
+                break;
+            }
 
-        // Parse the generated JD into structured data
-        const parsedJobData = parseJobDescription(generatedJD);
+            // Parse the generated JD into structured data
+            const parsedJobData = parseJobDescription(generatedJD);
 
-        // Update progress flag
-        await updateFlag('has_generated_jd', true);
+            // Update progress flag and database
+            await updateFlag('has_generated_jd', true);
+            await supabase
+              .from('jd_drafts')
+              .update({
+                generated_jd: generatedJD,
+                status: 'completed',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', draftData.id);
 
-        // Create final message with job description
-        const jobMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          content: generatedJD,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'job-description',
-          metadata: {
-            jobData: parsedJobData,
+            // Create final message with job description
+            const jobMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: generatedJD,
+              sender: 'assistant',
+              timestamp: new Date(),
+              type: 'job-description',
+              metadata: {
+                jdDraftId: draftData.id,
+                jobData: parsedJobData,
+              }
+            };
+
+            // Replace processing message with final result
+            setMessages(prev => prev.map(msg => 
+              msg.id === processingMessage.id ? jobMessage : msg
+            ));
+
+            // Show the structured JD in the right panel
+            onContentChange({
+              type: 'job-description',
+              title: 'Generated Job Description',
+              content: 'AI-generated job description ready for review',
+              data: parsedJobData,
+              draftId: draftData.id
+            });
+
+            console.log('✅ JD generation completed successfully');
+
+          } catch (generationError) {
+            console.error('❌ AI generation failed:', generationError);
+            await handleAIFallback(draftData.id, detection, processingMessage.id);
           }
-        };
+        }, 3000);
 
-        // Replace processing message with final result
-        setMessages(prev => prev.map(msg => 
-          msg.id === processingMessage.id ? jobMessage : msg
-        ));
-
-        // Show the structured JD in the right panel
-        onContentChange({
-          type: 'job-description',
-          title: 'Generated Job Description',
-          content: 'AI-generated job description ready for review',
-          data: parsedJobData
-        });
-
-        console.log('✅ JD generation completed successfully');
-      }, 3000);
+      } catch (aiError) {
+        console.error('❌ AI service error:', aiError);
+        await handleAIFallback(draftData.id, detection, processingMessage.id);
+      }
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
       
       // Show error message
-      const errorMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
+      sendAssistantMessage(
+        `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        'ai-fallback'
+      );
     } finally {
       setIsProcessingJD(false);
     }
+  };
+
+  // Handle AI fallback scenario
+  const handleAIFallback = async (draftId: string, detection: any, processingMessageId: string) => {
+    console.log('🔄 Activating AI fallback mode');
+
+    // Save fallback status to database
+    await saveFallbackStatus(draftId, detection);
+
+    // Send fallback chat message
+    const fallbackMessage = sendAssistantMessage(
+      "I was just about to generate your job description, but looks like my AI brain needs a moment to reconnect. No worries though — your input is safe, and we'll pick up from right here once I'm back online. You can continue editing manually for now if you'd like.",
+      'ai-fallback',
+      {
+        canRetry: true,
+        retryDraftId: draftId,
+        fallbackData: detection
+      }
+    );
+
+    // Replace processing message with fallback message
+    setMessages(prev => prev.map(msg => 
+      msg.id === processingMessageId ? fallbackMessage : msg
+    ));
+
+    // Show fallback notification in right panel
+    onContentChange({
+      type: 'ai-fallback',
+      title: '🧠 Assistant Paused',
+      content: 'AI temporarily offline - your input is safely saved',
+      data: {
+        draftId,
+        inputData: detection,
+        canRetry: true,
+        message: "Looks like AI is temporarily offline — but don't worry, your job brief has been saved. You can continue drafting manually, or take a short break while we reconnect.\n\nThis happens rarely, and we'll notify you once everything's running smoothly again."
+      }
+    });
   };
 
   const generateSimpleResponse = (userInput: string): string => {
@@ -478,18 +698,22 @@ Based on the reference job posting you provided, I've created an enhanced versio
         try {
           await updateFlag('has_submitted_jd_inputs', true);
 
-          const processingMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I detected: File upload (${file.name})\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
+          const processingMessage = sendAssistantMessage(
+            `📄 Perfect! I detected: File upload (${file.name})\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            'progress'
+          );
 
-          setMessages(prev => [...prev, processingMessage]);
-
-          // Simulate file processing
+          // Simulate file processing with potential AI failure
           setTimeout(async () => {
-            const generatedJD = `# Improved Job Description
+            try {
+              // Simulate potential AI failure
+              const shouldSimulateFailure = Math.random() < 0.2; // 20% chance
+              
+              if (shouldSimulateFailure) {
+                throw new Error('AI service temporarily unavailable during file processing');
+              }
+
+              const generatedJD = `# Improved Job Description
 
 Based on your uploaded file "${file.name}", I've created an enhanced version with better structure and inclusive language.
 
@@ -508,44 +732,67 @@ Based on your uploaded file "${file.name}", I've created an enhanced version wit
 
 This is a mock improvement - in production, we would extract and enhance the actual file content.`;
 
-            const parsedJobData = parseJobDescription(generatedJD);
-            await updateFlag('has_generated_jd', true);
+              const parsedJobData = parseJobDescription(generatedJD);
+              await updateFlag('has_generated_jd', true);
 
-            const jobMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              content: generatedJD,
-              sender: 'assistant',
-              timestamp: new Date(),
-              type: 'job-description',
-              metadata: {
-                jobData: parsedJobData,
-              }
-            };
+              const jobMessage: Message = {
+                id: (Date.now() + 2).toString(),
+                content: generatedJD,
+                sender: 'assistant',
+                timestamp: new Date(),
+                type: 'job-description',
+                metadata: {
+                  jobData: parsedJobData,
+                }
+              };
 
-            setMessages(prev => prev.map(msg => 
-              msg.id === processingMessage.id ? jobMessage : msg
-            ));
+              setMessages(prev => prev.map(msg => 
+                msg.id === processingMessage.id ? jobMessage : msg
+              ));
 
-            onContentChange({
-              type: 'job-description',
-              title: 'Generated Job Description',
-              content: 'AI-generated job description ready for review',
-              data: parsedJobData
-            });
+              onContentChange({
+                type: 'job-description',
+                title: 'Generated Job Description',
+                content: 'AI-generated job description ready for review',
+                data: parsedJobData
+              });
 
+            } catch (error) {
+              console.error('❌ File processing AI error:', error);
+              
+              // Handle AI fallback for file upload
+              const fallbackMessage = sendAssistantMessage(
+                "I was processing your uploaded file when my AI brain needed a moment to reconnect. Your file is safely received, and we'll continue once I'm back online. You can start drafting manually if you'd like.",
+                'ai-fallback',
+                {
+                  canRetry: true,
+                  fallbackData: { inputType: 'upload', fileName: file.name }
+                }
+              );
+
+              setMessages(prev => prev.map(msg => 
+                msg.id === processingMessage.id ? fallbackMessage : msg
+              ));
+
+              onContentChange({
+                type: 'ai-fallback',
+                title: '🧠 Assistant Paused',
+                content: 'AI temporarily offline during file processing',
+                data: {
+                  canRetry: true,
+                  message: "Your file upload was received, but AI is temporarily offline. You can continue manually or wait for reconnection."
+                }
+              });
+            }
           }, 3000);
 
         } catch (error) {
           console.error('❌ Error processing JD file upload:', error);
           
-          const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, errorMessage]);
+          sendAssistantMessage(
+            `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            'ai-fallback'
+          );
         } finally {
           setIsProcessingJD(false);
         }
@@ -644,6 +891,14 @@ This is a mock improvement - in production, we would extract and enhance the act
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
+  };
+
+  // Handle retry button click
+  const handleRetryAI = (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (message?.metadata?.retryDraftId && message?.metadata?.fallbackData) {
+      retryAIGeneration(message.metadata.retryDraftId, message.metadata.fallbackData);
+    }
   };
 
   // Job action handlers
@@ -774,24 +1029,28 @@ This is a mock improvement - in production, we would extract and enhance the act
                           message.type === 'retry-option' ? 'border-l-4' : ''
                         } ${
                           message.type === 'ai-offline' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'ai-fallback' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
                                          message.type === 'jd-request' ? '#FBE4D5' : 
                                          message.type === 'retry-option' ? '#FEF3CD' : 
-                                         message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
+                                         message.type === 'ai-offline' ? '#FEF2F2' : 
+                                         message.type === 'ai-fallback' ? '#FEF3CD' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
                                           message.type === 'jd-request' ? '#D5765B' : 
                                           message.type === 'retry-option' ? '#F59E0B' : 
-                                          message.type === 'ai-offline' ? '#EF4444' : 'transparent'
+                                          message.type === 'ai-offline' ? '#EF4444' : 
+                                          message.type === 'ai-fallback' ? '#F59E0B' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                         
                         {/* Processing indicators */}
-                        {isProcessingJD && message.content.includes('working on') && (
+                        {isProcessingJD && message.content.includes('creating') && (
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
@@ -812,6 +1071,27 @@ This is a mock improvement - in production, we would extract and enhance the act
                             <span className="text-xs font-medium" style={{ color: '#D5765B' }}>
                               Job Brief + Link • Upload • Job Brief • Link
                             </span>
+                          </div>
+                        )}
+
+                        {/* AI Fallback indicators with retry button */}
+                        {message.type === 'ai-fallback' && message.metadata?.canRetry && (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center space-x-2">
+                              <AlertTriangle className="w-3 h-3" style={{ color: '#F59E0B' }} />
+                              <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>
+                                AI Temporarily Offline
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => handleRetryAI(message.id)}
+                              className="h-6 px-3 rounded-lg font-light text-white hover:opacity-90 transition-all duration-200 text-xs"
+                              style={{ backgroundColor: '#D5765B' }}
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1" />
+                              Try Again
+                            </Button>
                           </div>
                         )}
 
