@@ -36,6 +36,10 @@ import {
 } from '@/lib/authDebug';
 import { toast } from 'sonner';
 
+// Correct Supabase project constants
+const CORRECT_SUPABASE_URL = 'https://vsactuzdnmbqatvghyli.supabase.co';
+const CORRECT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzYWN0dXpkbm1icWF0dmdoeWxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAxODA3ODYsImV4cCI6MjA2NTc1Njc4Nn0.XwmbGvUS8OQ4-5V-wzs-0yH4lCn8IkdgcyU8mhcc-o8';
+
 export function AuthDebugPage() {
   const [debugInfo, setDebugInfo] = useState<AuthDebugInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,6 +107,11 @@ export function AuthDebugPage() {
     toast.success('Debug log cleared');
   };
 
+  // Check if current config matches correct values
+  const isCorrectConfig = debugInfo?.supabaseUrl === CORRECT_SUPABASE_URL;
+  const currentUrl = import.meta.env.VITE_SUPABASE_URL;
+  const currentKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F9F7F4' }}>
@@ -167,6 +176,47 @@ export function AuthDebugPage() {
           </div>
         </motion.div>
 
+        {/* Configuration Status Warning */}
+        {!isCorrectConfig && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-medium text-red-800 mb-2">Incorrect Supabase Configuration</h3>
+                    <p className="text-sm text-red-700 mb-3">
+                      Your environment is not using the correct Supabase project. Expected configuration:
+                    </p>
+                    <div className="bg-red-100 p-3 rounded mb-3">
+                      <p className="text-xs font-mono text-red-800">
+                        VITE_SUPABASE_URL={CORRECT_SUPABASE_URL}
+                      </p>
+                      <p className="text-xs font-mono text-red-800">
+                        VITE_SUPABASE_ANON_KEY={CORRECT_SUPABASE_ANON_KEY.substring(0, 40)}...
+                      </p>
+                    </div>
+                    <p className="text-sm text-red-700 mb-3">
+                      Current: {currentUrl}
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={handleClearAuth}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Clear Auth Data & Update Config
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Project URL Warning */}
         {urlCheck.hasChanged && (
           <motion.div
@@ -224,10 +274,10 @@ export function AuthDebugPage() {
               <CardContent className="space-y-4">
                 <div>
                   <label className="text-sm font-medium" style={{ color: '#3A3936' }}>
-                    Project URL
+                    Project URL {isCorrectConfig ? '✅' : '❌'}
                   </label>
                   <div className="flex items-center space-x-2 mt-1">
-                    <code className="flex-1 p-2 rounded bg-gray-100 text-sm font-mono">
+                    <code className={`flex-1 p-2 rounded text-sm font-mono ${isCorrectConfig ? 'bg-green-100' : 'bg-red-100'}`}>
                       {debugInfo?.supabaseUrl}
                     </code>
                     <Button
@@ -243,24 +293,34 @@ export function AuthDebugPage() {
                       Project ID: {debugInfo.currentProjectId}
                     </p>
                   )}
+                  {!isCorrectConfig && (
+                    <p className="text-xs mt-1 text-red-600">
+                      Expected: {CORRECT_SUPABASE_URL}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="text-sm font-medium" style={{ color: '#3A3936' }}>
-                    Anon Key
+                    Anon Key {currentKey === CORRECT_SUPABASE_ANON_KEY ? '✅' : '❌'}
                   </label>
                   <div className="flex items-center space-x-2 mt-1">
-                    <code className="flex-1 p-2 rounded bg-gray-100 text-sm font-mono">
-                      {showFullKeys ? import.meta.env.VITE_SUPABASE_ANON_KEY : debugInfo?.supabaseAnonKey}
+                    <code className={`flex-1 p-2 rounded text-sm font-mono ${currentKey === CORRECT_SUPABASE_ANON_KEY ? 'bg-green-100' : 'bg-red-100'}`}>
+                      {showFullKeys ? currentKey : debugInfo?.supabaseAnonKey}
                     </code>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleCopyToClipboard(import.meta.env.VITE_SUPABASE_ANON_KEY || '', 'Anon Key')}
+                      onClick={() => handleCopyToClipboard(currentKey || '', 'Anon Key')}
                     >
                       <Copy className="w-3 h-3" />
                     </Button>
                   </div>
+                  {currentKey !== CORRECT_SUPABASE_ANON_KEY && (
+                    <p className="text-xs mt-1 text-red-600">
+                      Key mismatch detected
+                    </p>
+                  )}
                 </div>
 
                 {debugInfo?.lastKnownProjectUrl && (

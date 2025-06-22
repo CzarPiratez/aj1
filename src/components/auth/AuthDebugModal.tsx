@@ -24,6 +24,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
+// Correct Supabase project constants
+const CORRECT_SUPABASE_URL = 'https://vsactuzdnmbqatvghyli.supabase.co';
+const CORRECT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzYWN0dXpkbm1icWF0dmdoeWxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAxODA3ODYsImV4cCI6MjA2NTc1Njc4Nn0.XwmbGvUS8OQ4-5V-wzs-0yH4lCn8IkdgcyU8mhcc-o8';
+
 interface AuthDebugInfo {
   supabaseUrl: string;
   supabaseAnonKey: string;
@@ -159,6 +163,10 @@ export function AuthDebugModal({ isOpen, onClose }: AuthDebugModalProps) {
     return key.substring(0, 6) + '*'.repeat(key.length - 10) + key.substring(key.length - 4);
   };
 
+  // Check if current config matches correct values
+  const isCorrectUrl = debugInfo?.supabaseUrl === CORRECT_SUPABASE_URL;
+  const isCorrectKey = debugInfo?.supabaseAnonKey === CORRECT_SUPABASE_ANON_KEY;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
@@ -176,6 +184,35 @@ export function AuthDebugModal({ isOpen, onClose }: AuthDebugModalProps) {
             </div>
           ) : (
             <div className="space-y-6 p-1">
+              {/* Configuration Status Warning */}
+              {(!isCorrectUrl || !isCorrectKey) && (
+                <Card className="border-red-200 bg-red-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-start space-x-3">
+                      <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                      <div className="flex-1">
+                        <h3 className="font-medium text-red-800 mb-2">Incorrect Supabase Configuration</h3>
+                        <p className="text-sm text-red-700 mb-3">
+                          Your environment is not using the correct Supabase project.
+                        </p>
+                        <div className="bg-red-100 p-2 rounded mb-3">
+                          <p className="text-xs font-mono text-red-800">
+                            Expected: {CORRECT_SUPABASE_URL}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={handleClearAuthSession}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          Clear Auth Data
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="grid lg:grid-cols-2 gap-6">
                 {/* Supabase Project Info */}
                 <Card>
@@ -188,10 +225,10 @@ export function AuthDebugModal({ isOpen, onClose }: AuthDebugModalProps) {
                   <CardContent className="space-y-4">
                     <div>
                       <label className="text-sm font-medium block mb-2" style={{ color: '#3A3936' }}>
-                        Project URL
+                        Project URL {isCorrectUrl ? '✅' : '❌'}
                       </label>
                       <div className="flex items-center space-x-2">
-                        <code className="flex-1 p-2 rounded bg-gray-100 text-xs font-mono">
+                        <code className={`flex-1 p-2 rounded text-xs font-mono ${isCorrectUrl ? 'bg-green-100' : 'bg-red-100'}`}>
                           {debugInfo?.supabaseUrl}
                         </code>
                         <Button
@@ -206,10 +243,10 @@ export function AuthDebugModal({ isOpen, onClose }: AuthDebugModalProps) {
 
                     <div>
                       <label className="text-sm font-medium block mb-2" style={{ color: '#3A3936' }}>
-                        Anon Key
+                        Anon Key {isCorrectKey ? '✅' : '❌'}
                       </label>
                       <div className="flex items-center space-x-2">
-                        <code className="flex-1 p-2 rounded bg-gray-100 text-xs font-mono">
+                        <code className={`flex-1 p-2 rounded text-xs font-mono ${isCorrectKey ? 'bg-green-100' : 'bg-red-100'}`}>
                           {showFullKey ? debugInfo?.supabaseAnonKey : obfuscateKey(debugInfo?.supabaseAnonKey || '')}
                         </code>
                         <Button

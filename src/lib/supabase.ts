@@ -20,8 +20,8 @@ const hasValidCredentials = supabaseUrl &&
 if (!hasValidCredentials) {
   console.error('❌ Missing or invalid Supabase environment variables');
   console.error('Please check your .env file and ensure you have:');
-  console.error('VITE_SUPABASE_URL=https://your-project-id.supabase.co');
-  console.error('VITE_SUPABASE_ANON_KEY=your_actual_anon_key');
+  console.error('VITE_SUPABASE_URL=https://vsactuzdnmbqatvghyli.supabase.co');
+  console.error('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...');
   console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
   throw new Error('Invalid Supabase configuration');
 }
