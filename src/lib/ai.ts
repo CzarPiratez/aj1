@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// OpenRouter configuration using only environment variables
+// OpenRouter configuration using updated API keys
 const AI_CONFIGS: AIConfig[] = [
   {
     type: 'openrouter',
@@ -179,6 +179,7 @@ export async function callOpenRouter(
   for (const config of validConfigs) {
     try {
       console.log(`🤖 Trying ${config.name} with model: ${modelName}`);
+      console.log(`🔑 Using key: ${config.key.substring(0, 20)}...`);
       
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
