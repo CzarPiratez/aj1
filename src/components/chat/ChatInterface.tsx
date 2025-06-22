@@ -117,6 +117,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const currentInput = input;
     setInput('');
 
+    // Check if we're awaiting JD input
+    if (awaitingJDInput) {
+      await handleJDInputResponse(currentInput);
+      return;
+    }
+
     setIsTyping(true);
 
     // Use AI service for enhanced responses
@@ -150,6 +156,107 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleJDInputResponse = async (userInput: string) => {
+    console.log('🎯 Processing JD input response:', userInput);
+    setIsProcessingJD(true);
+    setAwaitingJDInput(false);
+
+    try {
+      // Update progress flag
+      await updateFlag('has_submitted_jd_inputs', true);
+
+      // Show processing message
+      const processingMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Perfect! I'm working on your job description now...\n\nI'll create a comprehensive, professional job description that's mission-aligned and inclusive...`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, processingMessage]);
+
+      // Simulate JD generation (replace with actual implementation)
+      setTimeout(async () => {
+        // Mock generated JD
+        const generatedJD = `# Program Coordinator - Community Development
+
+## Role Overview
+We are seeking a passionate Program Coordinator to join our community development team. This role offers an exciting opportunity to make a direct impact on local communities while working with a mission-driven organization committed to sustainable development.
+
+## Key Responsibilities
+- Coordinate and implement community development programs
+- Build relationships with local stakeholders and partners
+- Monitor and evaluate program effectiveness
+- Prepare reports and documentation
+- Support capacity building initiatives
+
+## Qualifications & Experience
+- Bachelor's degree in Development Studies, Social Sciences, or related field
+- 2-3 years of experience in community development or nonprofit sector
+- Strong communication and interpersonal skills
+- Experience with project management and monitoring & evaluation
+- Fluency in local languages preferred
+
+## What We Offer
+- Competitive salary commensurate with experience
+- Comprehensive benefits package
+- Professional development opportunities
+- Meaningful work with direct community impact
+
+## Application Process
+Please submit your CV and cover letter explaining your interest in community development work.`;
+
+        // Parse the generated JD into structured data
+        const parsedJobData = parseJobDescription(generatedJD);
+
+        // Update progress flag
+        await updateFlag('has_generated_jd', true);
+
+        // Create final message with job description
+        const jobMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          content: generatedJD,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'job-description',
+          metadata: {
+            jobData: parsedJobData,
+          }
+        };
+
+        // Replace processing message with final result
+        setMessages(prev => prev.map(msg => 
+          msg.id === processingMessage.id ? jobMessage : msg
+        ));
+
+        // Show the structured JD in the right panel
+        onContentChange({
+          type: 'job-description',
+          title: 'Generated Job Description',
+          content: 'AI-generated job description ready for review',
+          data: parsedJobData
+        });
+
+        console.log('✅ JD generation completed successfully');
+      }, 3000);
+
+    } catch (error) {
+      console.error('❌ Error processing JD input:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessingJD(false);
     }
   };
 
@@ -258,6 +365,94 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check if we're in JD mode and this is a supported file type
+    if (awaitingJDInput) {
+      const allowedTypes = ['doc', 'docx', 'pdf'];
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension && allowedTypes.includes(fileExtension)) {
+        // Process as JD file upload
+        setIsProcessingJD(true);
+        setAwaitingJDInput(false);
+
+        try {
+          await updateFlag('has_submitted_jd_inputs', true);
+
+          const processingMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, processingMessage]);
+
+          // Simulate file processing
+          setTimeout(async () => {
+            const generatedJD = `# Improved Job Description
+
+Based on your uploaded file "${file.name}", I've created an enhanced version with better structure and inclusive language.
+
+## Role Overview
+[Enhanced content based on your original file]
+
+## Key Responsibilities
+- [Improved responsibilities from your document]
+- [Additional clarity and structure]
+
+## Qualifications & Experience
+- [Enhanced qualifications section]
+- [More inclusive language]
+
+This is a mock improvement - in production, we would extract and enhance the actual file content.`;
+
+            const parsedJobData = parseJobDescription(generatedJD);
+            await updateFlag('has_generated_jd', true);
+
+            const jobMessage: Message = {
+              id: (Date.now() + 2).toString(),
+              content: generatedJD,
+              sender: 'assistant',
+              timestamp: new Date(),
+              type: 'job-description',
+              metadata: {
+                jobData: parsedJobData,
+              }
+            };
+
+            setMessages(prev => prev.map(msg => 
+              msg.id === processingMessage.id ? jobMessage : msg
+            ));
+
+            onContentChange({
+              type: 'job-description',
+              title: 'Generated Job Description',
+              content: 'AI-generated job description ready for review',
+              data: parsedJobData
+            });
+
+          }, 3000);
+
+        } catch (error) {
+          console.error('❌ Error processing JD file upload:', error);
+          
+          const errorMessage: Message = {
+            id: (Date.now() + 3).toString(),
+            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, errorMessage]);
+        } finally {
+          setIsProcessingJD(false);
+        }
+
+        e.target.value = '';
+        return;
+      }
+    }
+
     // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -307,9 +502,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
-  // Legacy tool action handler - restored
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool
+    // Special handling for JD tool - immediately send assistant message
     if (message === 'POST_JD_TOOL_TRIGGER') {
       console.log('🎯 JD Tool triggered');
       
@@ -319,10 +513,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the updated assistant message
+      // Send the assistant message immediately
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Job Brief + Organization or Project Link**  \n2. **Job Brief**  \n3. **Upload a JD Draft** (PDF or DOCX)  \n4. **Paste a Link** to a reference job post\n\nGo ahead and share whichever works best for you — I'll take it from there.",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Job Brief + org/project link\n2. Job Brief only\n3. Upload a JD draft (PDF/DOCX)\n4. Paste a link to a reference job post\n\nPlease share one of these to begin.",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -335,8 +529,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return;
     }
     
-    // For other tools, this should not auto-submit
-    console.log('Tool action triggered but not auto-submitting:', toolId, message);
+    // For other tools, populate input field but don't auto-send
+    setInput(message);
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -348,12 +542,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
-  };
-
-  // Legacy input setter - restored
-  const handleSetInput = (message: string) => {
-    setInput(message);
-    // Do NOT auto-submit - wait for user to press Enter
   };
 
   // Job action handlers
@@ -505,7 +693,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           <div className="flex items-center mt-2 space-x-2">
                             <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
                             <span className="text-xs" style={{ color: '#66615C' }}>
-                              Generating with DeepSeek Chat V3...
+                              Generating with AI...
                             </span>
                           </div>
                         )}
@@ -635,7 +823,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.json"
+            accept={awaitingJDInput ? ".doc,.docx,.pdf" : ".pdf,.docx,.txt,.json"}
             onChange={handleFileChange}
             className="hidden"
           />
@@ -660,7 +848,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder="Ask me anything about jobs, CVs, or matches..."
+                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -693,45 +881,58 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               style={{ borderColor: '#F1EFEC' }}
             >
               <div className="flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleFileUpload}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ color: '#66615C' }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  <Paperclip className="w-2.5 h-2.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleFileUpload}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ color: '#66615C' }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      <Paperclip className="w-2.5 h-2.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {awaitingJDInput ? 'Upload JD file (.doc, .docx, .pdf)' : 'Attach files (.pdf, .docx, .txt, .json)'}
+                  </TooltipContent>
+                </Tooltip>
 
-                {/* Categorized Tool Dropdowns - with restored legacy handlers */}
+                {/* Categorized Tool Dropdowns */}
                 {!progressLoading && (
                   <CategorizedToolDropdowns
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
-                    onSetInput={handleSetInput}
                     disabled={isTyping || isProcessingJD}
                   />
                 )}
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleRecording}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ 
-                    color: isRecording ? '#D5765B' : '#66615C',
-                    backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
-                  }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  {isRecording ? (
-                    <Square className="w-2.5 h-2.5" />
-                  ) : (
-                    <Mic className="w-2.5 h-2.5" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleRecording}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ 
+                        color: isRecording ? '#D5765B' : '#66615C',
+                        backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
+                      }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      {isRecording ? (
+                        <Square className="w-2.5 h-2.5" />
+                      ) : (
+                        <Mic className="w-2.5 h-2.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {isRecording ? 'Stop recording' : 'Voice input'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               <div className="flex items-center space-x-1 text-xs" style={{ color: '#66615C' }}>
@@ -747,7 +948,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              Press Enter to send, Shift+Enter for new line
+              {awaitingJDInput ? 'Share your job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
