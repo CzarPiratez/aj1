@@ -663,10 +663,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the smart assistant message
+      // Send the corrected assistant message with exact wording and order
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Paste a brief (e.g., \"We need a field coordinator for a migration project…\")\n2. Upload a JD draft you've written — I'll refine and improve it.\n3. Paste a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Job Brief with Organization or Project Web Link (I will create a wholistic JD)\n2. Write a short Job brief (e.g., \"We need a field coordinator for a migration project…\")\n3. Upload a JD draft you've written — I'll refine and improve it.\n4. Paste a reference link or a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -842,11 +842,11 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           </div>
                         )}
 
-                        {/* JD Request indicators - Fixed colors and removed icons */}
+                        {/* JD Request indicators - Updated with correct wording and font-light */}
                         {message.type === 'jd-request' && (
                           <div className="flex items-center mt-3">
                             <span className="text-xs font-light" style={{ color: '#D5765B' }}>
-                              Job Brief + Link • Upload • Job Brief • Link
+                              Brief + Link • Brief Only • Upload • Reference Link
                             </span>
                           </div>
                         )}
@@ -968,7 +968,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
