@@ -10,7 +10,8 @@ import {
   Loader2,
   FileText,
   Link,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -676,12 +677,12 @@ This is a mock improvement - in production, we would extract and enhance the act
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
-                                         message.type === 'jd-request' ? '#E8F5E8' : 
+                                         message.type === 'jd-request' ? '#FBE4D5' : 
                                          message.type === 'retry-option' ? '#FEF3CD' : 
                                          message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
-                                          message.type === 'jd-request' ? '#10B981' : 
+                                          message.type === 'jd-request' ? '#D5765B' : 
                                           message.type === 'retry-option' ? '#F59E0B' : 
                                           message.type === 'ai-offline' ? '#EF4444' : 'transparent'
                         }}
@@ -702,12 +703,13 @@ This is a mock improvement - in production, we would extract and enhance the act
                         {message.type === 'jd-request' && (
                           <div className="flex items-center mt-2 space-x-2">
                             <div className="flex space-x-1">
-                              <FileText className="w-3 h-3" style={{ color: '#10B981' }} />
-                              <Paperclip className="w-3 h-3" style={{ color: '#10B981' }} />
-                              <Link className="w-3 h-3" style={{ color: '#10B981' }} />
+                              <Plus className="w-3 h-3" style={{ color: '#D5765B' }} />
+                              <FileText className="w-3 h-3" style={{ color: '#D5765B' }} />
+                              <Paperclip className="w-3 h-3" style={{ color: '#D5765B' }} />
+                              <Link className="w-3 h-3" style={{ color: '#D5765B' }} />
                             </div>
-                            <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief • Upload • Link
+                            <span className="text-xs font-medium" style={{ color: '#D5765B' }}>
+                              Job Brief + Link • Upload • Job Brief • Link
                             </span>
                           </div>
                         )}
