@@ -804,8 +804,8 @@ If the problem persists, let us know and we'll fix it.`,
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool auto-submit
-    if (toolId === 'post-job-generate-jd' && message === 'JD_TOOL_AUTO_SUBMIT') {
+    // Special handling for JD tool
+    if (toolId === 'post-job-generate-jd') {
       console.log('[DEBUG:JD_TOOL_READY]');
       
       // Update progress flag
@@ -814,17 +814,10 @@ If the problem persists, let us know and we'll fix it.`,
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Auto-submit the assistant message immediately
+      // Send the exact assistant message as specified
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: `Let's get started on your job description. You can choose how you'd like to begin:
-
-1. **Paste a brief** and a website or project link — I'll align your JD with your mission and values.
-2. **Upload a JD draft** you've written — I'll refine and improve it.
-3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.
-4. **Just paste a brief** (e.g., "We need a field coordinator for a migration project…")
-
-Send me one of these to begin.`,
+        content: message,
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
