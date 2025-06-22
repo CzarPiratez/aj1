@@ -128,10 +128,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     try {
       const status = await checkAIStatus();
       setAiConnected(status.available);
-      console.log('[DEBUG:AI_STATUS]', status.available ? 'CONNECTED' : 'OFFLINE');
     } catch (error) {
       setAiConnected(false);
-      console.log('[DEBUG:AI_STATUS] ERROR');
     }
   };
 
@@ -178,7 +176,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
     // Check if we're awaiting JD input
     if (awaitingJDInput) {
-      console.log('[DEBUG:JD_INPUT_RECEIVED]', currentInput.substring(0, 50) + '...');
       await handleJDInputResponse(currentInput);
       return;
     }
@@ -229,40 +226,17 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   const handleJDInputResponse = async (userInput: string) => {
-    console.log('[DEBUG:JD_PROCESSING_START]', userInput.substring(0, 50) + '...');
+    console.log('🎯 Processing JD input response:', userInput);
     
-    // First check AI connectivity
-    if (aiConnected === false) {
-      console.log('[DEBUG:AI_OFFLINE_SAVE]');
-      
-      // Save input to database even when AI is offline
-      await saveJDInputToDatabase(userInput);
-      
-      const offlineMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "Thanks! We've saved your input. Once AI is connected, you'll be able to continue with draft generation.",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'ai-offline'
-      };
-
-      setMessages(prev => [...prev, offlineMessage]);
-      setAwaitingJDInput(false);
-      return;
-    }
-
-    // Classify input type
-    const inputType = classifyInputType(userInput);
-    console.log('[DEBUG:INPUT_TYPE]', inputType);
+    // Validate input length first
+    const trimmed = userInput.trim();
+    const wordCount = trimmed.split(/\s+/).filter(word => word.length > 0).length;
     
-    if (inputType === 'invalid') {
+    if (trimmed.length < 30 || wordCount < 6) {
       const clarificationMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `Could you provide a bit more detail? For example:
-
-"We're hiring a Gender Advisor for a 12-month project in Uganda. Must have 10+ years of experience in grants management, M&E, and fieldwork."
-
-That helps me generate something meaningful.`,
+        content: `Could you add a bit more detail? For example:
+"We need a Gender Expert for a livelihood project in Kenya with 10–13 years of experience in grants and M&E."`,
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request'
@@ -272,38 +246,40 @@ That helps me generate something meaningful.`,
       return;
     }
 
-    // Handle link clarification
-    if (inputType === 'link_only') {
-      console.log('[DEBUG:LINK_ONLY]');
-      const clarificationMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Perfect! I'm fetching the job post from: ${extractUrlFromInput(userInput)}...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, clarificationMessage]);
-    } else if (inputType === 'brief_with_link') {
-      console.log('[DEBUG:BRIEF+LINK]');
-      const clarificationMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "Great! I'll use the details and website you shared to create an aligned JD.",
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, clarificationMessage]);
+    // Classify input type
+    const inputType = classifyInputType(userInput);
+    
+    // Respond based on input type
+    let responseMessage = '';
+    if (inputType === 'brief_with_link') {
+      responseMessage = "Great! I'll use the details and website you shared to create an aligned JD.";
+    } else if (inputType === 'link_only') {
+      responseMessage = `Perfect! I'm fetching the job post from: ${extractUrlFromInput(userInput)}...`;
     } else if (inputType === 'brief_only') {
-      console.log('[DEBUG:BRIEF_ONLY]');
+      responseMessage = "Got it. I'll create a job description draft based on what you shared.";
+    } else {
       const clarificationMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "Got it. I'll create a job description draft based on what you shared.",
+        content: `Could you add a bit more detail? For example:
+"We need a Gender Expert for a livelihood project in Kenya with 10–13 years of experience in grants and M&E."`,
         sender: 'assistant',
         timestamp: new Date(),
+        type: 'jd-request'
       };
 
       setMessages(prev => [...prev, clarificationMessage]);
+      return;
     }
+
+    // Show initial response
+    const initialResponse: Message = {
+      id: (Date.now() + 1).toString(),
+      content: responseMessage,
+      sender: 'assistant',
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, initialResponse]);
 
     // Save input to database
     await saveJDInputToDatabase(userInput);
@@ -322,7 +298,7 @@ That helps me generate something meaningful.`,
     setAwaitingJDInput(false);
 
     try {
-      // Use the generateInitialJD function
+      // Use the new generateInitialJD function
       const result = await generateInitialJD(userInput, profile.id);
 
       if (!result.success) {
@@ -370,11 +346,10 @@ That helps me generate something meaningful.`,
         draftId: result.jdDraft!.id
       });
 
-      console.log('[DEBUG:JD_SUCCESS]');
+      console.log('✅ JD generation completed successfully');
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
-      console.log('[DEBUG:JD_ERROR]', error instanceof Error ? error.message : 'Unknown');
       
       // Show error message with retry option
       const errorMessage: Message = {
@@ -440,8 +415,6 @@ If the problem persists, let us know and we'll fix it.`,
 
       if (error) {
         console.error('Error saving JD input:', error);
-      } else {
-        console.log('[DEBUG:JD_SAVED]', sourceType);
       }
     } catch (error) {
       console.error('Error in saveJDInputToDatabase:', error);
@@ -547,26 +520,6 @@ If the problem persists, let us know and we'll fix it.`,
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       
       if (fileExtension && allowedTypes.includes(fileExtension)) {
-        console.log('[DEBUG:UPLOAD]', file.name);
-        
-        // Check AI connectivity first
-        if (aiConnected === false) {
-          console.log('[DEBUG:AI_OFFLINE_UPLOAD]');
-          
-          const offlineMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: "Thanks! We've saved your upload. Once AI is connected, you'll be able to continue with draft generation.",
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'ai-offline'
-          };
-
-          setMessages(prev => [...prev, offlineMessage]);
-          e.target.value = '';
-          setAwaitingJDInput(false);
-          return;
-        }
-
         // Process as JD file upload
         setIsProcessingJD(true);
         setAwaitingJDInput(false);
@@ -620,11 +573,8 @@ Thanks! I'm working on your first draft now. Give me a few seconds...`,
             data: parsedJobData
           });
 
-          console.log('[DEBUG:UPLOAD_SUCCESS]');
-
         } catch (error) {
           console.error('❌ Error processing JD file upload:', error);
-          console.log('[DEBUG:UPLOAD_ERROR]', error instanceof Error ? error.message : 'Unknown');
           
           const errorMessage: Message = {
             id: (Date.now() + 3).toString(),
@@ -806,7 +756,7 @@ If the problem persists, let us know and we'll fix it.`,
   const handleToolAction = (toolId: string, message: string) => {
     // Special handling for JD tool
     if (toolId === 'post-job-generate-jd') {
-      console.log('[DEBUG:JD_TOOL_READY]');
+      console.log('🎯 JD Tool triggered');
       
       // Update progress flag
       updateFlag('has_started_jd', true);

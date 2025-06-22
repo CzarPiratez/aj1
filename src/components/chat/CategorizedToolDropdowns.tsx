@@ -160,12 +160,15 @@ export function CategorizedToolDropdowns({
       inactiveMessage: '',
       action: () => onToolAction('post-job-generate-jd', `Let's get started on your job description. You can choose how you'd like to begin:
 
-1. **Paste a brief** and a website or project link — I'll align your JD with your mission and values.
-2. **Upload a JD draft** you've written — I'll refine and improve it.
-3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.
-4. **Just paste a brief** (e.g., "We need a field coordinator for a migration project…")
+Paste a brief + website or project link — I'll use both to craft a highly tailored JD.
 
-Send me one of these to begin.`)
+Upload a JD draft you've written — I'll refine and improve it.
+
+Paste a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.
+
+Paste a brief only — I'll build from that.
+
+Let me know which option you'd like to use to begin. You can also upload a file directly if that's easier.`)
     },
     {
       id: 'match-candidates',
