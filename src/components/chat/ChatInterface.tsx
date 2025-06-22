@@ -307,16 +307,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // For JD tool, just send the message directly
+    // Clean JD tool - no response at all
     if (toolId === 'post-job-generate-jd') {
-      const jdRequestMessage: Message = {
-        id: Date.now().toString(),
-        content: message,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-      
-      setMessages(prev => [...prev, jdRequestMessage]);
+      console.log('🎯 JD Tool clicked - no response configured');
       return;
     }
     

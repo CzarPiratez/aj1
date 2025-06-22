@@ -155,10 +155,13 @@ export function CategorizedToolDropdowns({
       id: 'post-job-generate-jd',
       label: '📌 Post a Job / Generate JD',
       icon: Briefcase,
-      description: 'Generate a high-quality, inclusive job description using AI. Paste a job brief, upload an old JD, or share a link.',
+      description: 'Generate a high-quality job description using AI.',
       isActive: () => true,
       inactiveMessage: '',
-      action: () => onToolAction('post-job-generate-jd', "Hi! 👋 Please paste your job brief, upload a JD draft, or share a link to an old job posting. I'll generate a structured job description for you.")
+      action: () => {
+        // Clean tool - no response, no logic, just silent click
+        console.log('JD tool clicked - no response configured');
+      }
     },
     {
       id: 'match-candidates',
