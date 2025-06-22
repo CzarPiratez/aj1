@@ -3,11 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { LandingPage } from '@/components/landing/LandingPage';
 import { AuthenticatedLayout } from '@/components/@authenticated/layout';
-import { AuthDebugPage } from '@/components/dev/AuthDebugPage';
-import { AuthDebugResetPage } from '@/components/auth/AuthDebugResetPage';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner';
-import { autoCleanupOnLoad, logAuthEvent } from '@/lib/authDebug';
 import './App.css';
 
 function App() {
@@ -17,20 +14,15 @@ function App() {
   const lastAuthEventRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Run auto-cleanup on app load
-    autoCleanupOnLoad();
-
     // Get initial session
     const getSession = async () => {
       try {
         console.log('🔄 Attempting to get Supabase session...');
-        logAuthEvent('SESSION_CHECK_START');
         
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('❌ Supabase session error:', error);
-          logAuthEvent('SESSION_CHECK_ERROR', { error: error.message });
           
           toast.error(`Supabase connection error: ${error.message}`, {
             description: 'Please check your environment variables and try refreshing the page.',
@@ -40,18 +32,11 @@ function App() {
         }
         
         console.log('✅ Supabase session retrieved successfully');
-        logAuthEvent('SESSION_CHECK_SUCCESS', { 
-          hasSession: !!session,
-          userEmail: session?.user?.email 
-        });
         
         setUser(session?.user ?? null);
         setInitialLoad(false);
       } catch (error) {
         console.error('❌ Error getting session:', error);
-        logAuthEvent('SESSION_CHECK_FAILED', { 
-          error: error instanceof Error ? error.message : 'Unknown error' 
-        });
         
         // Show detailed error message to user
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -73,11 +58,6 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 Auth event:', event, 'Session exists:', !!session);
-        logAuthEvent('AUTH_STATE_CHANGE', { 
-          event, 
-          hasSession: !!session,
-          userEmail: session?.user?.email 
-        });
         
         try {
           const newUser = session?.user ?? null;
@@ -93,10 +73,8 @@ function App() {
               lastAuthEventRef.current = eventKey;
               
               if (event === 'SIGNED_IN' && newUser) {
-                logAuthEvent('USER_SIGNED_IN', { userEmail: newUser.email });
                 toast.success('Successfully signed in!');
               } else if (event === 'SIGNED_OUT') {
-                logAuthEvent('USER_SIGNED_OUT');
                 toast.success('Successfully signed out!');
                 // Clear the last event when signing out
                 lastAuthEventRef.current = null;
@@ -105,9 +83,6 @@ function App() {
           }
         } catch (error) {
           console.error('❌ Auth state change error:', error);
-          logAuthEvent('AUTH_STATE_CHANGE_ERROR', { 
-            error: error instanceof Error ? error.message : 'Unknown error' 
-          });
           
           toast.error('Authentication error occurred', {
             description: 'Please try refreshing the page.',
@@ -160,23 +135,11 @@ function App() {
   return (
     <Router>
       <div className="h-screen w-screen overflow-hidden">
-        <Routes>
-          {/* Debug routes - MUST come first and be exact matches */}
-          <Route path="/dev/auth-debug" element={<AuthDebugPage />} />
-          <Route path="/auth-debug" element={<AuthDebugResetPage />} />
-          
-          {/* Main application route - catch all other paths */}
-          <Route 
-            path="*" 
-            element={
-              user ? (
-                <AuthenticatedLayout user={user} />
-              ) : (
-                <LandingPage />
-              )
-            } 
-          />
-        </Routes>
+        {user ? (
+          <AuthenticatedLayout user={user} />
+        ) : (
+          <LandingPage />
+        )}
         
         <Toaster 
           position="top-right"

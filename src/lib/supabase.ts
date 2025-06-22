@@ -36,7 +36,8 @@ if (!hasValidCredentials) {
     console.error('❌ Anon key mismatch: Key does not match expected project');
   }
   
-  throw new Error('Invalid Supabase configuration');
+  // Don't throw error in production, just log warnings
+  console.warn('⚠️ Continuing with potentially invalid configuration...');
 }
 
 // Create Supabase client with enhanced configuration for authentication debugging
@@ -46,7 +47,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce',
-    debug: true // Enable debug mode for authentication
+    debug: false // Disable debug mode for production
   },
   global: {
     headers: {
