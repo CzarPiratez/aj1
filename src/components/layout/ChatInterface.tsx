@@ -23,6 +23,7 @@ import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
+import { parseJDInput, isDetectionReliable, getInputTypeDescription } from '@/lib/jdInputDetection';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -104,6 +105,18 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
+  // Helper function to send assistant message
+  const sendAssistantMessage = (content: string, type?: Message['type']) => {
+    const assistantMessage: Message = {
+      id: Date.now().toString(),
+      content,
+      sender: 'assistant',
+      timestamp: new Date(),
+      type
+    };
+    setMessages(prev => [...prev, assistantMessage]);
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -166,26 +179,49 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setAwaitingJDInput(false);
 
     try {
+      // Parse the input to detect type
+      const detection = parseJDInput(userInput);
+      console.log('🔍 Input detection result:', detection);
+
+      // Check if detection is reliable
+      if (!isDetectionReliable(detection)) {
+        console.warn('⚠️ Low confidence detection:', detection);
+      }
+
+      // Handle unknown input type
+      if (detection.inputType === 'unknown') {
+        sendAssistantMessage(
+          "Hmm, I couldn't detect a job brief, link, or upload. Please try again with one of the supported input types:\n\n1. Job Brief + Organization Link\n2. Job Brief only\n3. Upload a JD Draft (use the paperclip icon)\n4. Paste a Link to a reference job post",
+          'suggestion'
+        );
+        setAwaitingJDInput(true);
+        setIsProcessingJD(false);
+        return;
+      }
+
       // Update progress flag
       await updateFlag('has_submitted_jd_inputs', true);
 
-      // Show processing message
+      // Show processing message with detected input type
       const processingMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `Perfect! I'm working on your job description now...\n\nI'll create a comprehensive, professional job description that's mission-aligned and inclusive...`,
+        content: `Perfect! I detected: ${getInputTypeDescription(detection)}\n\nI'm now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
         sender: 'assistant',
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, processingMessage]);
 
-      // Simulate JD generation (replace with actual implementation)
+      // Simulate JD generation based on input type (replace with actual implementation)
       setTimeout(async () => {
-        // Mock generated JD
-        const generatedJD = `# Program Coordinator - Community Development
+        let generatedJD = '';
+
+        switch (detection.inputType) {
+          case 'briefWithLink':
+            generatedJD = `# Program Coordinator - Community Development
 
 ## Role Overview
-We are seeking a passionate Program Coordinator to join our community development team. This role offers an exciting opportunity to make a direct impact on local communities while working with a mission-driven organization committed to sustainable development.
+Based on your job brief and organization link, we are seeking a passionate Program Coordinator to join our community development team. This role offers an exciting opportunity to make a direct impact on local communities while working with a mission-driven organization committed to sustainable development.
 
 ## Key Responsibilities
 - Coordinate and implement community development programs
@@ -208,7 +244,70 @@ We are seeking a passionate Program Coordinator to join our community developmen
 - Meaningful work with direct community impact
 
 ## Application Process
-Please submit your CV and cover letter explaining your interest in community development work.`;
+Please submit your CV and cover letter explaining your interest in community development work.
+
+*Generated from: Job brief + Organization link*`;
+            break;
+
+          case 'briefOnly':
+            generatedJD = `# Field Coordinator - Humanitarian Response
+
+## Role Overview
+Based on your job brief, we are seeking a dedicated Field Coordinator to support our humanitarian response efforts. This position requires someone passionate about making a difference in crisis-affected communities.
+
+## Key Responsibilities
+- Coordinate field operations and program implementation
+- Manage relationships with local partners and beneficiaries
+- Ensure compliance with humanitarian standards and protocols
+- Monitor program activities and report on progress
+- Support team capacity building and training
+
+## Qualifications & Experience
+- Bachelor's degree in relevant field (International Relations, Development Studies, etc.)
+- 3+ years of experience in humanitarian or development work
+- Strong leadership and coordination skills
+- Experience working in challenging environments
+- Excellent communication skills in English and local languages
+
+## What We Offer
+- Competitive compensation package
+- Comprehensive health and safety support
+- Professional development opportunities
+- Meaningful work with direct impact on vulnerable populations
+
+## Application Process
+Please submit your application including CV and cover letter.
+
+*Generated from: Job brief only*`;
+            break;
+
+          case 'referenceLink':
+            generatedJD = `# Enhanced Job Description
+
+## Role Overview
+Based on the reference job posting you provided, I've created an enhanced version with improved structure, inclusive language, and nonprofit sector alignment.
+
+## Key Responsibilities
+- [Enhanced responsibilities based on reference posting]
+- [Improved clarity and mission alignment]
+- [Additional context for nonprofit sector]
+
+## Qualifications & Experience
+- [Refined qualifications with inclusive language]
+- [Better structured requirements]
+- [Emphasis on mission-driven experience]
+
+## What We Offer
+- [Enhanced benefits description]
+- [Professional development opportunities]
+- [Mission-driven work environment]
+
+## Application Process
+[Improved application instructions with accessibility considerations]
+
+*Generated from: Reference job posting link*`;
+            break;
+        }
 
         // Parse the generated JD into structured data
         const parsedJobData = parseJobDescription(generatedJD);
@@ -381,7 +480,7 @@ Please submit your CV and cover letter explaining your interest in community dev
 
           const processingMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
+            content: `📄 Perfect! I detected: File upload (${file.name})\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -404,6 +503,8 @@ Based on your uploaded file "${file.name}", I've created an enhanced version wit
 ## Qualifications & Experience
 - [Enhanced qualifications section]
 - [More inclusive language]
+
+*Generated from: Uploaded file (${file.name})*
 
 This is a mock improvement - in production, we would extract and enhance the actual file content.`;
 
