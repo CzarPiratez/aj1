@@ -161,18 +161,21 @@ function App() {
     <Router>
       <div className="h-screen w-screen overflow-hidden">
         <Routes>
-          {/* Debug routes - accessible regardless of auth status */}
+          {/* Debug routes - MUST come first and be exact matches */}
           <Route path="/dev/auth-debug" element={<AuthDebugPage />} />
           <Route path="/auth-debug" element={<AuthDebugResetPage />} />
           
-          {/* Main application routes */}
-          <Route path="/*" element={
-            user ? (
-              <AuthenticatedLayout user={user} />
-            ) : (
-              <LandingPage />
-            )
-          } />
+          {/* Main application route - catch all other paths */}
+          <Route 
+            path="*" 
+            element={
+              user ? (
+                <AuthenticatedLayout user={user} />
+              ) : (
+                <LandingPage />
+              )
+            } 
+          />
         </Routes>
         
         <Toaster 
