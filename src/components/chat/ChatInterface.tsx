@@ -174,12 +174,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  // Core handleSend function - handles both user input and auto-submitted messages
   const handleSend = async (messageContent?: string) => {
+    // Improved message handling to prevent input state issues
     const messageToSend = (messageContent ?? input).trim();
     if (!messageToSend) return;
-
-    console.log('📤 handleSend called with:', { messageContent, inputValue: input, finalMessage: messageToSend });
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -247,22 +245,6 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } finally {
       setIsTyping(false);
     }
-  };
-
-  // Auto-submit handler - directly calls handleSend with the message
-  const handleAutoSubmit = (message: string) => {
-    console.log('🚀 Auto-submit triggered with message:', message);
-    
-    // Check if this is a JD-related message and set awaiting state
-    if (message.toLowerCase().includes("let's get started") || 
-        message.toLowerCase().includes("job description") ||
-        message.toLowerCase().includes("go ahead and share")) {
-      console.log('🎯 JD tool message detected, setting awaitingJDInput = true');
-      setAwaitingJDInput(true);
-    }
-    
-    // Directly call handleSend with the message
-    handleSend(message);
   };
 
   const generateSimpleResponse = (userInput: string): string => {
@@ -466,6 +448,22 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
+  };
+
+  // Auto-submit handler for organization tools
+  const handleAutoSubmit = (message: string) => {
+    console.log('🚀 Auto-submitting message:', message);
+    
+    // More flexible condition to detect JD messages
+    if (message.toLowerCase().includes("let's get started") || 
+        message.toLowerCase().includes("let's begin") ||
+        message.toLowerCase().includes("ready for your input")) {
+      console.log('🎯 JD tool message detected, setting awaitingJDInput = true');
+      setAwaitingJDInput(true);
+    }
+    
+    // Call handleSend directly with the message
+    handleSend(message);
   };
 
   // Job action handlers
@@ -783,7 +781,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                   </TooltipContent>
                 </Tooltip>
 
-                {/* Categorized Tool Dropdowns with Auto-Submit */}
+                {/* Categorized Tool Dropdowns */}
                 {!progressLoading && (
                   <CategorizedToolDropdowns
                     flags={flags}

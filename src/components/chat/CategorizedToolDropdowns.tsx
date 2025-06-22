@@ -37,14 +37,14 @@ interface Tool {
   description: string;
   isActive: (flags: UserProgressFlags) => boolean;
   inactiveMessage: string;
-  autoSubmitMessage?: string; // For tools that auto-submit assistant messages
+  autoSubmitMessage?: string; // New property for auto-submit tools
 }
 
 interface CategorizedToolDropdownsProps {
   flags: UserProgressFlags;
   onToolAction: (toolId: string, message: string) => void;
   onInactiveToolClick: (message: string) => void;
-  onAutoSubmit: (message: string) => void; // Direct auto-submit handler
+  onAutoSubmit?: (message: string) => void; // New prop for direct auto-submit
   disabled?: boolean;
 }
 
@@ -182,13 +182,13 @@ Go ahead and share whichever works best for you — I'll take it from there.`
       return;
     }
 
-    // Check if this tool has an auto-submit message
-    if (tool.autoSubmitMessage) {
-      console.log(`🚀 Auto-submitting tool: ${tool.id}`);
+    // Check if this is an organization tool with auto-submit message
+    if (tool.autoSubmitMessage && onAutoSubmit) {
+      console.log(`🚀 Auto-submitting organization tool: ${tool.id}`);
       onAutoSubmit(tool.autoSubmitMessage);
     } else {
       // Regular tool behavior (no auto-submit)
-      console.log(`🔧 Regular tool clicked: ${tool.id}`);
+      console.log(`🔧 Tool clicked: ${tool.id} - Regular behavior`);
       onToolAction(tool.id, '');
     }
   };
