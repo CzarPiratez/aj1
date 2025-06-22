@@ -814,7 +814,7 @@ If the problem persists, let us know and we'll fix it.`,
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Add the assistant message directly to the chat
+      // Send the exact assistant message as specified
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: message,
