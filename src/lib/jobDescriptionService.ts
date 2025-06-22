@@ -1,6 +1,7 @@
 // Job Description Service - Handle JD input processing and generation
 import { supabase } from '@/lib/supabase';
 import { generateJobDescription as aiGenerateJobDescription } from './ai';
+import { scrapeWebsite, type WebsiteContent } from './jobBuilder';
 
 export interface JDInput {
   type: 'brief' | 'upload' | 'link';
@@ -29,11 +30,12 @@ export interface JDDraft {
 }
 
 // Generate input summary for database storage
-function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File): string {
+function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File | WebsiteContent): string {
   if (inputType === 'upload' && input instanceof File) {
     return `File upload: ${input.name}`;
-  } else if (inputType === 'link' && typeof input === 'string') {
-    return `Website: ${extractDomain(input)}`;
+  } else if (inputType === 'link' && typeof input === 'object' && 'url' in input) {
+    const websiteContent = input as WebsiteContent;
+    return `Website: ${websiteContent.title || extractDomain(websiteContent.url)}`;
   } else if (inputType === 'brief' && typeof input === 'string') {
     // Take first 100 characters of the brief as summary
     const brief = input.trim();
@@ -139,7 +141,7 @@ export function validateBriefInput(brief: string): { isValid: boolean; reason?: 
 export async function processJDInput(
   userId: string,
   inputType: 'brief' | 'upload' | 'link',
-  input: string | File
+  input: string | File | WebsiteContent
 ): Promise<JDDraft | null> {
   try {
     let rawInput: string;
@@ -161,14 +163,12 @@ export async function processJDInput(
       // TODO: Implement actual file text extraction
       console.log('File upload processing not yet implemented');
       
-    } else if (inputType === 'link' && typeof input === 'string') {
-      // Handle URL input
-      url = input;
-      rawInput = input;
-      
-      // TODO: Implement URL content fetching
-      content = `URL content from: ${input}`;
-      console.log('URL content fetching not yet implemented');
+    } else if (inputType === 'link' && typeof input === 'object' && 'url' in input) {
+      // Handle WebsiteContent input (already scraped)
+      const websiteContent = input as WebsiteContent;
+      url = websiteContent.url;
+      rawInput = websiteContent.url;
+      content = `${websiteContent.title}\n\n${websiteContent.description}\n\n${websiteContent.content}`;
       
     } else if (inputType === 'brief' && typeof input === 'string') {
       // Handle brief text input
