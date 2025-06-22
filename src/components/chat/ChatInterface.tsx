@@ -47,6 +47,41 @@ interface ChatInterfaceProps {
   profile?: any;
 }
 
+// Input detection logic
+function detectInputType(input: string): {
+  type: 'brief_plus_link' | 'brief' | 'job_post_link' | 'unknown';
+  urls: string[];
+  hasJobContent: boolean;
+} {
+  // Extract URLs from input
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const urls = input.match(urlRegex) || [];
+  
+  // Check for job-related keywords
+  const jobKeywords = [
+    'role', 'position', 'job', 'responsibilities', 'experience', 'skills', 
+    'qualifications', 'requirements', 'coordinator', 'manager', 'officer',
+    'specialist', 'consultant', 'director', 'assistant', 'analyst', 'hiring',
+    'vacancy', 'opportunity', 'apply', 'candidate', 'employment'
+  ];
+  
+  const hasJobContent = jobKeywords.some(keyword => 
+    input.toLowerCase().includes(keyword)
+  );
+  
+  // Determine input type
+  if (urls.length > 0 && hasJobContent) {
+    return { type: 'brief_plus_link', urls, hasJobContent };
+  } else if (urls.length === 1 && !hasJobContent) {
+    // Single URL without job content - likely a reference job post
+    return { type: 'job_post_link', urls, hasJobContent };
+  } else if (hasJobContent && urls.length === 0) {
+    return { type: 'brief', urls, hasJobContent };
+  } else {
+    return { type: 'unknown', urls, hasJobContent };
+  }
+}
+
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
   const { flags, loading: progressLoading, updateFlag, updateFlags } = useUserProgress(profile?.id);
   
@@ -66,6 +101,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isProcessingJD, setIsProcessingJD] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -116,6 +152,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const currentInput = input;
     setInput('');
 
+    // Check if we're awaiting JD input
+    if (awaitingJDInput) {
+      await handleJDInputResponse(currentInput);
+      return;
+    }
+
     setIsTyping(true);
 
     // Use AI service for enhanced responses
@@ -149,6 +191,66 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleJDInputResponse = async (userInput: string) => {
+    console.log('🎯 Processing JD input response:', userInput);
+    setAwaitingJDInput(false);
+
+    try {
+      // Detect input type
+      const detection = detectInputType(userInput);
+      console.log('🔍 Input detection result:', detection);
+
+      // Save to Supabase
+      const { data, error } = await supabase
+        .from('jd_drafts')
+        .insert({
+          user_id: profile?.id,
+          input_type: detection.type,
+          raw_input: userInput,
+          is_final: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving JD draft:', error);
+        throw error;
+      }
+
+      console.log('✅ JD draft saved:', data);
+
+      // Update progress flag
+      await updateFlag('has_submitted_jd_inputs', true);
+
+      // Show confirmation message
+      const confirmationMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "Thanks. I'm preparing a tailored job description based on your input. This will only take a few moments.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'progress'
+      };
+
+      setMessages(prev => [...prev, confirmationMessage]);
+
+      // Note: We don't generate the JD yet as per instructions
+
+    } catch (error) {
+      console.error('❌ Error processing JD input:', error);
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: `❌ Sorry, I encountered an error while saving your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
     }
   };
 
@@ -257,6 +359,76 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check if we're in JD mode and this is a supported file type
+    if (awaitingJDInput) {
+      const allowedTypes = ['pdf', 'docx'];
+      const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (fileExtension && allowedTypes.includes(fileExtension)) {
+        try {
+          // Save uploaded file to Supabase
+          const { data, error } = await supabase
+            .from('jd_drafts')
+            .insert({
+              user_id: profile?.id,
+              input_type: 'uploaded_file',
+              raw_input: `Uploaded file: ${file.name}`,
+              is_final: false,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (error) {
+            console.error('❌ Error saving uploaded file:', error);
+            throw error;
+          }
+
+          console.log('✅ File upload saved:', data);
+
+          // Update progress flag
+          await updateFlag('has_submitted_jd_inputs', true);
+
+          // Show confirmation message
+          const confirmationMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `📄 Perfect! I received your file: "${file.name}"\n\nThanks. I'm preparing a tailored job description based on your input. This will only take a few moments.`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'progress'
+          };
+
+          setMessages(prev => [...prev, confirmationMessage]);
+          setAwaitingJDInput(false);
+
+        } catch (error) {
+          console.error('❌ Error processing JD file upload:', error);
+          
+          const errorMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, errorMessage]);
+        }
+
+        e.target.value = '';
+        return;
+      } else {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          content: `Sorry, only PDF and DOCX files are supported for job description uploads.`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        }]);
+        e.target.value = '';
+        return;
+      }
+    }
+
     // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -307,9 +479,29 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Clean JD tool - no response at all
+    // Special handling for JD tool with auto-submit
     if (toolId === 'post-job-generate-jd') {
-      console.log('🎯 JD Tool clicked - no response configured');
+      console.log('🎯 JD Tool triggered with auto-submit');
+      
+      // Update progress flag
+      updateFlag('has_started_jd', true);
+      
+      // Set awaiting input state
+      setAwaitingJDInput(true);
+      
+      // Send the assistant message immediately
+      const jdRequestMessage: Message = {
+        id: Date.now().toString(),
+        content: message,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'jd-request',
+        metadata: {
+          isJDRequest: true
+        }
+      };
+      
+      setMessages(prev => [...prev, jdRequestMessage]);
       return;
     }
     
@@ -609,7 +801,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.json"
+            accept={awaitingJDInput ? ".pdf,.docx" : ".pdf,.docx,.txt,.json"}
             onChange={handleFileChange}
             className="hidden"
           />
@@ -634,7 +826,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder="Ask me anything about jobs, CVs, or matches..."
+                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -667,16 +859,23 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               style={{ borderColor: '#F1EFEC' }}
             >
               <div className="flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleFileUpload}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ color: '#66615C' }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  <Paperclip className="w-2.5 h-2.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleFileUpload}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ color: '#66615C' }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      <Paperclip className="w-2.5 h-2.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {awaitingJDInput ? 'Upload JD file (.pdf, .docx)' : 'Attach files (.pdf, .docx, .txt, .json)'}
+                  </TooltipContent>
+                </Tooltip>
 
                 {/* Categorized Tool Dropdowns */}
                 {!progressLoading && (
@@ -685,26 +884,34 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
                     disabled={isTyping || isProcessingJD}
+                    aiConnected={aiConnected ?? true}
                   />
                 )}
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleRecording}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ 
-                    color: isRecording ? '#D5765B' : '#66615C',
-                    backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
-                  }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  {isRecording ? (
-                    <Square className="w-2.5 h-2.5" />
-                  ) : (
-                    <Mic className="w-2.5 h-2.5" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleRecording}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ 
+                        color: isRecording ? '#D5765B' : '#66615C',
+                        backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
+                      }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      {isRecording ? (
+                        <Square className="w-2.5 h-2.5" />
+                      ) : (
+                        <Mic className="w-2.5 h-2.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {isRecording ? 'Stop recording' : 'Voice input'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               <div className="flex items-center space-x-1 text-xs" style={{ color: '#66615C' }}>
@@ -720,7 +927,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              Press Enter to send, Shift+Enter for new line
+              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
