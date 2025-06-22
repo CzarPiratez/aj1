@@ -151,7 +151,7 @@ export function CategorizedToolDropdowns({
       description: 'Generate a high-quality job description using AI.',
       isActive: () => true,
       inactiveMessage: '',
-      autoSubmitMessage: "Let's create a professional job description together! You can provide input in three ways:\n\n1. **Share a brief** (e.g., \"We need a field coordinator for a migration project...\")\n2. **Upload a JD draft** you've written — I'll refine and improve it\n3. **Share a link** to an existing job post — I'll rewrite it with better clarity and alignment\n\nWhat would you like to start with?"
+      autoSubmitMessage: "Let's get started on your job description. You can begin in any of these ways:\n\n1. **Job Brief + Organization or Project Link**\n2. **Job Brief**\n3. **Upload a JD Draft** (PDF or DOCX)\n4. **Paste a Link** to a reference job post\n\nGo ahead and share whichever works best for you — I'll take it from there."
     },
     {
       id: 'match-candidates',
