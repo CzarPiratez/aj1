@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use NEXT_PUBLIC_ prefixed environment variables for client-side access
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -12,13 +11,13 @@ console.log('🔧 Supabase Config Check:', {
 
 // Expected correct values
 const EXPECTED_URL = 'https://vsactuzdnmbqatvghyli.supabase.co';
-const EXPECTED_KEY_PREFIX = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzYWN0dXpkbm1icWF0dmdoeWxpIiwicm9sZSI6ImFub24i';
+const EXPECTED_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZzYWN0dXpkbm1icWF0dmdoeWxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAxODA3ODYsImV4cCI6MjA2NTc1Njc4Nn0.XwmbGvUS8OQ4-5V-wzs-0yH4lCn8IkdgcyU8mhcc-o8';
 
 // Validate Supabase credentials
 const hasValidCredentials = supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl === EXPECTED_URL &&
-  supabaseAnonKey.startsWith(EXPECTED_KEY_PREFIX) &&
+  supabaseAnonKey === EXPECTED_KEY &&
   supabaseUrl.startsWith('https://') &&
   supabaseUrl.includes('.supabase.co');
 
@@ -32,7 +31,7 @@ if (!hasValidCredentials) {
   if (supabaseUrl !== EXPECTED_URL) {
     console.error(`❌ URL mismatch: Expected ${EXPECTED_URL}, got ${supabaseUrl}`);
   }
-  if (!supabaseAnonKey?.startsWith(EXPECTED_KEY_PREFIX)) {
+  if (supabaseAnonKey !== EXPECTED_KEY) {
     console.error('❌ Anon key mismatch: Key does not match expected project');
   }
   

@@ -23,26 +23,26 @@ export interface AIResponse {
   };
 }
 
-// OpenRouter configuration using environment variables with NEXT_PUBLIC_ prefix
+// OpenRouter configuration using environment variables
 const AI_CONFIGS: AIConfig[] = [
   {
     type: 'openrouter',
     name: 'DeepSeek Chat V3 Primary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_1 || process.env.VITE_OPENROUTER_API_KEY_1 || '',
+    key: import.meta.env.VITE_OPENROUTER_API_KEY_1 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Primary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
   },
   {
     type: 'openrouter',
     name: 'DeepSeek Chat V3 Secondary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_2 || process.env.VITE_OPENROUTER_API_KEY_2 || '',
+    key: import.meta.env.VITE_OPENROUTER_API_KEY_2 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Secondary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
   },
   {
     type: 'openrouter',
     name: 'DeepSeek Chat V3 Tertiary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_3 || process.env.VITE_OPENROUTER_API_KEY_3 || '',
+    key: import.meta.env.VITE_OPENROUTER_API_KEY_3 || '',
     default_model: 'deepseek/deepseek-chat-v3-0324:free',
     description: 'Tertiary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
   }
