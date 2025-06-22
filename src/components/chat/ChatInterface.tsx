@@ -102,26 +102,19 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  // Modified handleSend to accept messageContent parameter
-  const handleSend = async (messageContent?: string) => {
-    // Use provided messageContent or fall back to current input
-    const currentInput = messageContent || input.trim();
-    
-    if (!currentInput) return;
+  const handleSend = async () => {
+    if (!input.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: currentInput,
+      content: input,
       sender: 'user',
       timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    
-    // Clear input only if we're using the input state (not when messageContent is provided)
-    if (!messageContent) {
-      setInput('');
-    }
+    const currentInput = input;
+    setInput('');
 
     setIsTyping(true);
 
@@ -252,8 +245,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend(); // Use current input state
-      setInput(''); // Clear input after sending
+      handleSend();
     }
   };
 
@@ -315,8 +307,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Immediately send the message without setting input state
-    handleSend(message);
+    // For all tools, auto-submit the message immediately
+    setInput(message);
+    // Auto-send the message after a brief delay to ensure input is set
+    setTimeout(() => handleSend(), 50);
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -649,10 +643,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 className="flex-shrink-0"
               >
                 <Button
-                  onClick={() => {
-                    handleSend(); // Use current input state
-                    setInput(''); // Clear input after sending
-                  }}
+                  onClick={handleSend}
                   disabled={!canSend}
                   className="h-6 w-6 rounded-lg text-white transition-all duration-200 shadow-sm p-0 flex items-center justify-center"
                   style={{ 
