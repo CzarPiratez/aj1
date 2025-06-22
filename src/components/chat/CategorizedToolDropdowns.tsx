@@ -37,6 +37,7 @@ interface Tool {
   description: string;
   isActive: (flags: UserProgressFlags) => boolean;
   inactiveMessage: string;
+  message: string; // The message to auto-submit when tool is clicked
 }
 
 interface CategorizedToolDropdownsProps {
@@ -60,7 +61,8 @@ export function CategorizedToolDropdowns({
       icon: Upload,
       description: 'Upload your CV and get AI-powered analysis',
       isActive: () => true,
-      inactiveMessage: ''
+      inactiveMessage: '',
+      message: 'I want to upload and analyze my CV'
     },
     {
       id: 'revise-cv',
@@ -68,7 +70,8 @@ export function CategorizedToolDropdowns({
       icon: FileEdit,
       description: 'Tailor your CV for a specific job opportunity',
       isActive: (flags) => flags.has_analyzed_cv,
-      inactiveMessage: "You'll need to upload and analyze your CV before I can help you revise it for specific jobs. Click 'Upload & Analyze CV' above or drop your file here!"
+      inactiveMessage: "You'll need to upload and analyze your CV before I can help you revise it for specific jobs. Click 'Upload & Analyze CV' above or drop your file here!",
+      message: 'Help me revise my CV for a specific job'
     },
     {
       id: 'write-cover-letter',
@@ -76,7 +79,8 @@ export function CategorizedToolDropdowns({
       icon: Mail,
       description: 'Create a compelling cover letter for your application',
       isActive: (flags) => flags.has_selected_job,
-      inactiveMessage: "I'd love to help you write a cover letter! First, let's find and select a job you're interested in. Try 'Search Jobs (AI-Powered)' to get started."
+      inactiveMessage: "I'd love to help you write a cover letter! First, let's find and select a job you're interested in. Try 'Search Jobs (AI-Powered)' to get started.",
+      message: 'Help me write a cover letter for my selected job'
     },
     {
       id: 'revise-cover-letter',
@@ -84,7 +88,8 @@ export function CategorizedToolDropdowns({
       icon: Wand2,
       description: 'Polish and improve your existing cover letter',
       isActive: (flags) => flags.has_written_cover_letter,
-      inactiveMessage: "Once you've written a cover letter, I can help you refine and improve it. Let's start by creating your first draft!"
+      inactiveMessage: "Once you've written a cover letter, I can help you refine and improve it. Let's start by creating your first draft!",
+      message: 'Help me revise and improve my cover letter'
     }
   ];
 
@@ -95,7 +100,8 @@ export function CategorizedToolDropdowns({
       icon: Search,
       description: 'Let AI find the perfect jobs for you',
       isActive: () => true,
-      inactiveMessage: ''
+      inactiveMessage: '',
+      message: 'Help me search for jobs using AI'
     },
     {
       id: 'manual-job-search',
@@ -103,7 +109,8 @@ export function CategorizedToolDropdowns({
       icon: Eye,
       description: 'Browse jobs with custom filters and criteria',
       isActive: () => true,
-      inactiveMessage: ''
+      inactiveMessage: '',
+      message: 'I want to manually search and browse jobs'
     },
     {
       id: 'match-me-to-jobs',
@@ -111,7 +118,8 @@ export function CategorizedToolDropdowns({
       icon: Target,
       description: 'Find jobs that perfectly match your profile',
       isActive: (flags) => flags.has_analyzed_cv,
-      inactiveMessage: "To find the best job matches for you, I need to analyze your CV first. Upload your CV and I'll find opportunities that align with your skills and experience!"
+      inactiveMessage: "To find the best job matches for you, I need to analyze your CV first. Upload your CV and I'll find opportunities that align with your skills and experience!",
+      message: 'Find job matches based on my CV and preferences'
     },
     {
       id: 'explore-similar-roles',
@@ -119,7 +127,8 @@ export function CategorizedToolDropdowns({
       icon: RotateCcw,
       description: 'Discover alternative career paths and opportunities',
       isActive: (flags) => flags.has_applied_to_job,
-      inactiveMessage: "Once you've applied to a job, I can suggest similar roles and alternative career paths. Let's get your first application submitted!"
+      inactiveMessage: "Once you've applied to a job, I can suggest similar roles and alternative career paths. Let's get your first application submitted!",
+      message: 'Show me similar roles and alternative career paths'
     },
     {
       id: 'skill-gaps-upskill',
@@ -127,7 +136,8 @@ export function CategorizedToolDropdowns({
       icon: Lightbulb,
       description: 'Identify skills to develop and learning opportunities',
       isActive: (flags) => flags.has_analyzed_cv,
-      inactiveMessage: "I can analyze your skill gaps and suggest upskilling paths once I understand your current abilities. Upload your CV so I can provide personalized recommendations!"
+      inactiveMessage: "I can analyze your skill gaps and suggest upskilling paths once I understand your current abilities. Upload your CV so I can provide personalized recommendations!",
+      message: 'Analyze my skill gaps and suggest upskilling opportunities'
     }
   ];
 
@@ -138,15 +148,17 @@ export function CategorizedToolDropdowns({
       icon: Building,
       description: 'Create a compelling organization profile',
       isActive: () => true,
-      inactiveMessage: ''
+      inactiveMessage: '',
+      message: 'Help me create an organization profile'
     },
     {
       id: 'post-job-generate-jd',
       label: 'Post a Job / Generate JD',
       icon: Briefcase,
-      description: 'Generate a high-quality job description using AI.',
+      description: 'Generate a high-quality job description using AI',
       isActive: () => true,
-      inactiveMessage: ''
+      inactiveMessage: '',
+      message: 'POST_JD_TOOL_TRIGGER' // Special trigger for JD tool
     },
     {
       id: 'match-candidates',
@@ -154,7 +166,8 @@ export function CategorizedToolDropdowns({
       icon: Users,
       description: 'Find the best candidates for your posted jobs',
       isActive: (flags) => flags.has_published_job,
-      inactiveMessage: "Once you've published a job, I can help you find and match the best candidates. Let's start by creating your job posting!"
+      inactiveMessage: "Once you've published a job, I can help you find and match the best candidates. Let's start by creating your job posting!",
+      message: 'Help me find and match candidates to my job posting'
     }
   ];
 
@@ -162,10 +175,10 @@ export function CategorizedToolDropdowns({
     const isActive = tool.isActive(flags);
     
     if (isActive) {
-      // CLEANED UP: No longer auto-submits or stages messages in input field
-      console.log(`🔧 Tool clicked: ${tool.id} - Cleaned up, no auto-submit`);
-      onToolAction(tool.id, ''); // Empty message, no staging
+      // Always auto-submit the tool message immediately
+      onToolAction(tool.id, tool.message);
     } else {
+      // Show inactive message for tools that aren't available yet
       onInactiveToolClick(tool.inactiveMessage);
     }
   };
@@ -269,4 +282,4 @@ export function CategorizedToolDropdowns({
       {renderDropdown(organizationTools, 'Organization', Building, 'Organization and hiring tools')}
     </div>
   );
-};
+}
