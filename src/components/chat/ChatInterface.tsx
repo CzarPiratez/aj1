@@ -804,6 +804,8 @@ If the problem persists, let us know and we'll fix it.`,
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
+    console.log('[DEBUG:TOOL_ACTION]', toolId, message.substring(0, 50) + '...');
+    
     // Special handling for JD tool
     if (toolId === 'post-job-generate-jd') {
       console.log('[DEBUG:JD_TOOL_READY]');
@@ -814,7 +816,7 @@ If the problem persists, let us know and we'll fix it.`,
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the exact assistant message as specified
+      // Add the assistant message directly to the chat
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: message,
