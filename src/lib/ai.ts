@@ -1,13 +1,5 @@
 // Global AI Integration for AidJobs Platform
-// Centralized OpenRouter + DeepSeek configuration with automatic key rotation
-
-export interface AIConfig {
-  type: 'openrouter';
-  name: string;
-  key: string;
-  default_model: string;
-  description: string;
-}
+// Centralized OpenRouter + DeepSeek configuration with rotating key fallback
 
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant';
@@ -23,53 +15,52 @@ export interface AIResponse {
   };
 }
 
-// OpenRouter configuration using environment variables
-const AI_CONFIGS: AIConfig[] = [
-  {
-    type: 'openrouter',
-    name: 'DeepSeek Chat V3 Primary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_1 || '',
-    default_model: 'deepseek/deepseek-chat-v3-0324:free',
-    description: 'Primary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
-  },
-  {
-    type: 'openrouter',
-    name: 'DeepSeek Chat V3 Secondary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_2 || '',
-    default_model: 'deepseek/deepseek-chat-v3-0324:free',
-    description: 'Secondary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
-  },
-  {
-    type: 'openrouter',
-    name: 'DeepSeek Chat V3 Tertiary',
-    key: import.meta.env.VITE_OPENROUTER_API_KEY_3 || '',
-    default_model: 'deepseek/deepseek-chat-v3-0324:free',
-    description: 'Tertiary AI engine - DeepSeek Chat V3 0324 Free via OpenRouter'
+// Parse API keys from environment variable
+function parseApiKeys(): string[] {
+  const keysString = import.meta.env.VITE_OPENROUTER_API_KEYS || '';
+  if (!keysString) {
+    console.error('❌ No OpenRouter API keys found in VITE_OPENROUTER_API_KEYS');
+    return [];
   }
-];
+  
+  const keys = keysString.split(',').map(key => key.trim()).filter(key => key.length > 0);
+  console.log(`🔑 Loaded ${keys.length} OpenRouter API keys`);
+  return keys;
+}
 
-// Get the primary AI config (first available)
-export const AI_CONFIG = AI_CONFIGS.find(config => config.key) || AI_CONFIGS[0];
+// Get the model from environment
+function getModel(): string {
+  const model = import.meta.env.VITE_OPENROUTER_MODEL || 'deepseek/deepseek-chat-v3-0324:free';
+  console.log(`🤖 Using model: ${model}`);
+  return model;
+}
 
-// Validate AI configuration
+// Global configuration
+const API_KEYS = parseApiKeys();
+const MODEL = getModel();
+
+// Validate configuration
 export function validateAIConfig(): boolean {
-  const hasValidConfig = AI_CONFIGS.some(config => {
-    if (!config.key) return false;
-    if (!config.key.startsWith('sk-or-v1-')) return false;
-    return true;
-  });
+  if (API_KEYS.length === 0) {
+    console.error('❌ No valid OpenRouter API keys found. Please set VITE_OPENROUTER_API_KEYS in your .env file.');
+    console.error('📝 Format: VITE_OPENROUTER_API_KEYS=key1,key2,key3,key4');
+    console.error('🔗 Get your API keys from: https://openrouter.ai/keys');
+    return false;
+  }
 
-  if (!hasValidConfig) {
-    console.error('❌ No valid OpenRouter API keys found. Please set at least one of:');
-    console.error('   VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2, VITE_OPENROUTER_API_KEY_3');
-    console.error('📝 Get your API keys from: https://openrouter.ai/keys');
+  // Validate key format
+  const invalidKeys = API_KEYS.filter(key => !key.startsWith('sk-or-v1-'));
+  if (invalidKeys.length > 0) {
+    console.error('❌ Invalid OpenRouter API key format detected:', invalidKeys);
+    console.error('📝 Keys should start with "sk-or-v1-"');
     return false;
   }
   
+  console.log(`✅ AI configuration valid: ${API_KEYS.length} keys, model: ${MODEL}`);
   return true;
 }
 
-// Enhanced error logging to Supabase with better error handling
+// Enhanced error logging to Supabase
 async function logError(
   errorType: string,
   details: string,
@@ -86,7 +77,6 @@ async function logError(
         const { data: { user } } = await supabase.auth.getUser();
         finalUserId = user?.id || null;
       } catch (authError) {
-        // If we can't get user, we'll log without user_id
         finalUserId = null;
       }
     }
@@ -103,14 +93,33 @@ async function logError(
 
     if (error) {
       console.error('Failed to log error to database:', error);
-      // Don't throw here to avoid infinite loops
-    } else {
-      console.log('✅ Error logged to database successfully');
     }
   } catch (error) {
     console.error('Failed to log error to database:', error);
-    // Don't throw here to avoid infinite loops
   }
+}
+
+// Enhanced rate limit and error detection
+function isRateLimitError(error: any): boolean {
+  if (typeof error === 'string') {
+    return error.includes('429') || 
+           error.includes('rate limit') || 
+           error.includes('Rate limit exceeded') ||
+           error.includes('free-models-per-min') ||
+           error.includes('free-models-per-day') ||
+           error.includes('quota');
+  }
+  
+  if (error instanceof Error) {
+    return error.message.includes('429') || 
+           error.message.includes('rate limit') || 
+           error.message.includes('Rate limit exceeded') ||
+           error.message.includes('free-models-per-min') ||
+           error.message.includes('free-models-per-day') ||
+           error.message.includes('quota');
+  }
+  
+  return false;
 }
 
 // Validate AI response
@@ -132,30 +141,8 @@ function validateAIResponse(response: any): boolean {
   return true;
 }
 
-// Enhanced rate limit detection
-function isRateLimitError(error: any): boolean {
-  if (typeof error === 'string') {
-    return error.includes('429') || 
-           error.includes('rate limit') || 
-           error.includes('Rate limit exceeded') ||
-           error.includes('free-models-per-min') ||
-           error.includes('free-models-per-day');
-  }
-  
-  if (error instanceof Error) {
-    return error.message.includes('429') || 
-           error.message.includes('rate limit') || 
-           error.message.includes('Rate limit exceeded') ||
-           error.message.includes('free-models-per-min') ||
-           error.message.includes('free-models-per-day');
-  }
-  
-  return false;
-}
-
-// Core OpenRouter API call function with key rotation
+// Core OpenRouter API call function with rotating key fallback
 export async function callOpenRouter(
-  modelName: string,
   messages: AIMessage[],
   options: {
     temperature?: number;
@@ -174,24 +161,27 @@ export async function callOpenRouter(
   }
 
   // Try each API key in order until one succeeds
-  const validConfigs = AI_CONFIGS.filter(config => config.key);
   let lastError: Error | null = null;
   let rateLimitedKeys: string[] = [];
+  let failedKeys: string[] = [];
 
-  for (const config of validConfigs) {
+  for (let i = 0; i < API_KEYS.length; i++) {
+    const apiKey = API_KEYS[i];
+    const keyName = `Key ${i + 1}`;
+    
     try {
-      console.log(`🤖 Trying ${config.name} with model: ${modelName}`);
+      console.log(`🤖 Trying ${keyName} with model: ${MODEL}`);
       
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${config.key}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': window.location.origin,
           'X-Title': 'AidJobs Platform'
         },
         body: JSON.stringify({
-          model: modelName,
+          model: MODEL,
           messages,
           temperature,
           max_tokens,
@@ -201,33 +191,38 @@ export async function callOpenRouter(
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage = `${config.name} API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`;
+        const errorMessage = `${keyName} API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`;
         
-        // Check for rate limiting - don't retry rate limit errors, move to next key
+        // Check for rate limiting - move to next key immediately
         if (response.status === 429 || isRateLimitError(errorMessage)) {
-          rateLimitedKeys.push(config.name);
-          console.log(`⚠️ ${config.name} is rate limited, trying next key...`);
-          throw new Error(errorMessage);
+          rateLimitedKeys.push(keyName);
+          console.log(`⚠️ ${keyName} is rate limited, trying next key...`);
+          lastError = new Error(errorMessage);
+          continue;
         }
         
-        // Check for server errors and retry with same key
+        // Check for server errors and retry with next key
         if (response.status >= 500) {
-          console.log(`🔄 Server error from ${config.name}, trying next key...`);
-          throw new Error(errorMessage);
+          failedKeys.push(keyName);
+          console.log(`🔄 Server error from ${keyName}, trying next key...`);
+          lastError = new Error(errorMessage);
+          continue;
         }
         
-        // Log non-rate-limit errors (but don't fail if logging fails)
+        // Log non-rate-limit errors
         try {
           await logError(
             'AI_API_ERROR',
             errorMessage,
-            `callOpenRouter - ${config.name}`
+            `callOpenRouter - ${keyName}`
           );
         } catch (logError) {
           console.warn('Could not log error to database:', logError);
         }
         
-        throw new Error(errorMessage);
+        lastError = new Error(errorMessage);
+        failedKeys.push(keyName);
+        continue;
       }
 
       const data = await response.json();
@@ -239,16 +234,18 @@ export async function callOpenRouter(
           await logError(
             'AI_VALIDATION_ERROR',
             `${errorMessage} - Response: ${JSON.stringify(data)}`,
-            `callOpenRouter - ${config.name}`
+            `callOpenRouter - ${keyName}`
           );
         } catch (logError) {
           console.warn('Could not log error to database:', logError);
         }
         
-        throw new Error(errorMessage);
+        lastError = new Error(errorMessage);
+        failedKeys.push(keyName);
+        continue;
       }
 
-      console.log(`✅ ${config.name} responded successfully`);
+      console.log(`✅ ${keyName} responded successfully`);
       return {
         content: data.choices[0].message.content,
         usage: data.usage
@@ -258,12 +255,14 @@ export async function callOpenRouter(
       
       // Track rate limited keys
       if (isRateLimitError(lastError.message)) {
-        if (!rateLimitedKeys.includes(config.name)) {
-          rateLimitedKeys.push(config.name);
+        if (!rateLimitedKeys.includes(keyName)) {
+          rateLimitedKeys.push(keyName);
         }
+      } else {
+        failedKeys.push(keyName);
       }
       
-      console.log(`⚠️ ${config.name} failed, trying next key...`);
+      console.log(`⚠️ ${keyName} failed: ${lastError.message}`);
       continue;
     }
   }
@@ -271,8 +270,8 @@ export async function callOpenRouter(
   // All keys failed - provide helpful error message
   let errorMessage = 'All OpenRouter API keys are temporarily unavailable.';
   
-  if (rateLimitedKeys.length === validConfigs.length) {
-    errorMessage = `All OpenRouter API keys have hit their rate limits. This is common with free tier usage. Please try again in a few minutes, or consider upgrading your OpenRouter account for higher limits.
+  if (rateLimitedKeys.length === API_KEYS.length) {
+    errorMessage = `All ${API_KEYS.length} OpenRouter API keys have hit their rate limits. This is common with free tier usage. Please try again in a few minutes.
 
 Rate limited keys: ${rateLimitedKeys.join(', ')}
 
@@ -284,13 +283,19 @@ To resolve this:
     errorMessage = `Some OpenRouter API keys are rate limited, others failed with errors. Please try again in a few minutes.
 
 Rate limited: ${rateLimitedKeys.join(', ')}
+Failed: ${failedKeys.join(', ')}
+Last error: ${lastError?.message}`;
+  } else {
+    errorMessage = `All ${API_KEYS.length} OpenRouter API keys failed with errors.
+
+Failed keys: ${failedKeys.join(', ')}
 Last error: ${lastError?.message}`;
   }
   
   try {
     await logError(
       'AI_ALL_KEYS_FAILED',
-      `All ${validConfigs.length} keys failed. Rate limited: ${rateLimitedKeys.length}. Last error: ${lastError?.message}`,
+      `All ${API_KEYS.length} keys failed. Rate limited: ${rateLimitedKeys.length}, Failed: ${failedKeys.length}. Last error: ${lastError?.message}`,
       'callOpenRouter'
     );
   } catch (logError) {
@@ -300,29 +305,16 @@ Last error: ${lastError?.message}`;
   throw new Error(errorMessage);
 }
 
-// Core AI function with automatic fallback and better rate limit handling
+// Core AI function with automatic fallback
 export async function callAI(
   messages: AIMessage[],
   options: {
-    model?: string;
     temperature?: number;
     max_tokens?: number;
     stream?: boolean;
-    skipRateLimitCheck?: boolean;
   } = {}
 ): Promise<AIResponse> {
-  const {
-    model = 'deepseek/deepseek-chat-v3-0324:free',
-    temperature = 0.7,
-    max_tokens = 2000,
-    stream = false
-  } = options;
-
-  return await callOpenRouter(model, messages, {
-    temperature,
-    max_tokens,
-    stream
-  });
+  return await callOpenRouter(messages, options);
 }
 
 // Specialized AI functions for different AidJobs tools
@@ -361,7 +353,6 @@ Please create a job description that aligns with their mission and work.`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.8, 
     max_tokens: 3000 
   });
@@ -390,7 +381,6 @@ ${cvText}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.6, 
     max_tokens: 2500 
   });
@@ -430,7 +420,6 @@ ${organizationInfo}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.7, 
     max_tokens: 2000 
   });
@@ -475,7 +464,6 @@ GAPS: [bullet points]`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.5, 
     max_tokens: 2000 
   });
@@ -532,7 +520,6 @@ ${targetRole}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.6, 
     max_tokens: 2500 
   });
@@ -568,7 +555,6 @@ ${websiteContent ? `WEBSITE CONTENT:\n${websiteContent}` : ''}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.7, 
     max_tokens: 2500 
   });
@@ -601,7 +587,6 @@ ${content}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.6, 
     max_tokens: 2500 
   });
@@ -637,7 +622,6 @@ ${currentInterests}`;
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.8, 
     max_tokens: 2500 
   });
@@ -675,7 +659,6 @@ ${userProfile ? `User context: ${JSON.stringify(userProfile)}` : ''}`;
   messages.push({ role: 'user', content: userMessage });
 
   const response = await callAI(messages, { 
-    model: 'deepseek/deepseek-chat-v3-0324:free',
     temperature: 0.7, 
     max_tokens: 1500 
   });
@@ -688,19 +671,20 @@ export async function checkAIStatus(): Promise<{
   available: boolean;
   model: string;
   error?: string;
-  workingKeys?: string[];
-  failedKeys?: string[];
+  workingKeys?: number;
+  totalKeys?: number;
 }> {
   try {
     if (!validateAIConfig()) {
       return {
         available: false,
         model: 'none',
-        error: 'No valid API keys configured. Please set VITE_OPENROUTER_API_KEY_1, _2, or _3 in your .env file.'
+        error: 'No valid API keys configured. Please set VITE_OPENROUTER_API_KEYS in your .env file.',
+        totalKeys: API_KEYS.length
       };
     }
 
-    // Test with a longer message to pass validation
+    // Test with a simple message
     const testMessages: AIMessage[] = [
       { 
         role: 'user', 
@@ -708,43 +692,27 @@ export async function checkAIStatus(): Promise<{
       }
     ];
 
-    const validConfigs = AI_CONFIGS.filter(config => config.key);
-    const workingKeys: string[] = [];
-    const failedKeys: string[] = [];
-
-    // Test each key
-    for (const config of validConfigs) {
-      try {
-        await callOpenRouter('deepseek/deepseek-chat-v3-0324:free', testMessages, { max_tokens: 100 });
-        workingKeys.push(config.name);
-        // If first key works, we're good
-        break;
-      } catch (error) {
-        failedKeys.push(config.name);
-        console.log(`⚠️ ${config.name} status check failed:`, error instanceof Error ? error.message : error);
-      }
+    let workingKeys = 0;
+    
+    // Test first key only for status check (to avoid hitting all keys)
+    try {
+      await callOpenRouter(testMessages, { max_tokens: 100 });
+      workingKeys = 1; // At least one key is working
+    } catch (error) {
+      // If first key fails, we'll report as unavailable but still show total keys
+      console.log('AI status check: First key failed, but others may work');
     }
 
-    if (workingKeys.length > 0) {
-      return {
-        available: true,
-        model: 'deepseek/deepseek-chat-v3-0324:free',
-        workingKeys,
-        failedKeys
-      };
-    } else {
-      return {
-        available: false,
-        model: 'none',
-        error: 'All OpenRouter API keys are currently unavailable or rate limited',
-        workingKeys,
-        failedKeys
-      };
-    }
+    return {
+      available: workingKeys > 0,
+      model: MODEL,
+      workingKeys,
+      totalKeys: API_KEYS.length
+    };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Only log non-rate-limit errors to avoid spam (but don't fail if logging fails)
+    // Only log non-rate-limit errors
     if (!errorMessage.includes('429') && !errorMessage.includes('rate limit')) {
       try {
         await logError(
@@ -760,45 +728,40 @@ export async function checkAIStatus(): Promise<{
     return {
       available: false,
       model: 'none',
-      error: errorMessage
+      error: errorMessage,
+      totalKeys: API_KEYS.length
     };
   }
 }
 
-// Initialize AI service on app start with enhanced logging
+// Initialize AI service on app start
 export function initializeAI(): void {
   console.log('🔧 Initializing AI Service...');
+  console.log(`🤖 Model: ${MODEL}`);
+  console.log(`🔑 API Keys: ${API_KEYS.length} configured`);
   
-  const validConfigs = AI_CONFIGS.filter(config => config.key);
-  console.log(`🔑 Found ${validConfigs.length} valid API keys out of ${AI_CONFIGS.length} total`);
-  
-  validConfigs.forEach((config, index) => {
-    console.log(`   ${index + 1}. ${config.name}: ${config.key.substring(0, 20)}...`);
-  });
-  
-  if (validConfigs.length === 0) {
-    console.warn('⚠️ No valid OpenRouter API keys found in environment variables');
-    console.warn('📝 Please set at least one of: VITE_OPENROUTER_API_KEY_1, VITE_OPENROUTER_API_KEY_2, VITE_OPENROUTER_API_KEY_3');
+  if (API_KEYS.length === 0) {
+    console.warn('⚠️ No OpenRouter API keys found in VITE_OPENROUTER_API_KEYS');
+    console.warn('📝 Please set VITE_OPENROUTER_API_KEYS=key1,key2,key3,key4 in your .env file');
     console.warn('🔗 Get your API keys from: https://openrouter.ai/keys');
     return;
   }
   
-  console.log('✅ AI Service initialized with DeepSeek Chat V3 (deepseek/deepseek-chat-v3-0324:free)');
-  console.log(`🎯 Primary model: ${validConfigs[0].name} (${validConfigs[0].default_model})`);
+  // Show obfuscated keys for debugging
+  API_KEYS.forEach((key, index) => {
+    const obfuscated = key.substring(0, 12) + '*'.repeat(8) + key.substring(key.length - 4);
+    console.log(`   ${index + 1}. ${obfuscated}`);
+  });
+  
+  console.log('✅ AI Service initialized with rotating key fallback');
   console.log('🔄 Automatic key rotation enabled for rate limit handling');
   
   // Test the connection (but don't block initialization)
   checkAIStatus().then(status => {
     if (status.available) {
-      console.log('🟢 AI Service is online and ready');
-      if (status.workingKeys && status.workingKeys.length > 0) {
-        console.log(`✅ Working keys: ${status.workingKeys.join(', ')}`);
-      }
-      if (status.failedKeys && status.failedKeys.length > 0) {
-        console.log(`⚠️ Failed/Rate-limited keys: ${status.failedKeys.join(', ')}`);
-      }
+      console.log(`🟢 AI Service is online (${status.workingKeys}/${status.totalKeys} keys working)`);
     } else {
-      console.log('🔴 AI Service status:', status.error);
+      console.log(`🔴 AI Service status: ${status.error} (${status.totalKeys} keys configured)`);
     }
   }).catch(error => {
     console.log('🔴 AI Service connection test failed:', error.message);
