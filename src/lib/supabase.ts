@@ -4,12 +4,12 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 console.log('🔧 Supabase Config Check:', {
-  url: supabaseUrl ? `✅ Set (${supabaseUrl.substring(0, 30)}...)` : '❌ Missing VITE_SUPABASE_URL',
+  url: supabaseUrl ? `✅ Set (${supabaseUrl})` : '❌ Missing VITE_SUPABASE_URL',
   key: supabaseAnonKey ? `✅ Set (${supabaseAnonKey.substring(0, 20)}...)` : '❌ Missing VITE_SUPABASE_ANON_KEY',
   envVars: Object.keys(import.meta.env).filter(key => key.startsWith('VITE_'))
 });
 
-// Check if we have valid Supabase credentials
+// Validate Supabase credentials
 const hasValidCredentials = supabaseUrl && 
   supabaseAnonKey && 
   supabaseUrl !== 'your_supabase_project_url_here' &&
@@ -23,57 +23,77 @@ if (!hasValidCredentials) {
   console.error('VITE_SUPABASE_URL=https://your-project-id.supabase.co');
   console.error('VITE_SUPABASE_ANON_KEY=your_actual_anon_key');
   console.error('🔗 Get your credentials from: https://supabase.com/dashboard');
+  throw new Error('Invalid Supabase configuration');
 }
 
-// Create Supabase client with proper configuration
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key',
-  {
-    auth: {
-      autoRefreshToken: hasValidCredentials,
-      persistSession: hasValidCredentials,
-      detectSessionInUrl: hasValidCredentials,
-      flowType: 'pkce'
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'aidjobs-platform'
-      }
+// Create Supabase client with enhanced configuration for authentication debugging
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce',
+    debug: true // Enable debug mode for authentication
+  },
+  global: {
+    headers: {
+      'X-Client-Info': 'aidjobs-platform'
     }
+  },
+  db: {
+    schema: 'public'
   }
-);
+});
 
-// Test the connection only if we have real credentials
-if (hasValidCredentials) {
-  console.log('🔄 Testing Supabase connection...');
-  supabase.auth.getSession().then(({ data, error }) => {
-    if (error) {
-      console.error('❌ Supabase connection error:', {
-        message: error.message,
-        status: error.status,
-        statusText: error.statusText,
-        details: error
+// Enhanced connection test with detailed logging
+console.log('🔄 Testing Supabase connection...');
+console.log('📍 Connecting to:', supabaseUrl);
+console.log('🔑 Using anon key:', supabaseAnonKey.substring(0, 20) + '...');
+
+supabase.auth.getSession().then(({ data, error }) => {
+  if (error) {
+    console.error('❌ Supabase connection error:', {
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      details: error
+    });
+  } else {
+    console.log('✅ Supabase connected successfully');
+    console.log('📊 Project URL:', supabaseUrl);
+    if (data.session) {
+      console.log('👤 Active session found:', {
+        user: data.session.user?.email,
+        expires: data.session.expires_at
       });
     } else {
-      console.log('✅ Supabase connected successfully to:', supabaseUrl);
-      if (data.session) {
-        console.log('👤 User session found:', data.session.user?.email);
-      } else {
-        console.log('👤 No active user session');
-      }
+      console.log('👤 No active session');
     }
-  }).catch(err => {
-    console.error('❌ Supabase connection failed:', {
-      message: err.message,
-      stack: err.stack,
-      error: err
-    });
+  }
+}).catch(err => {
+  console.error('❌ Supabase connection failed:', {
+    message: err.message,
+    stack: err.stack,
+    error: err
   });
-} else {
-  console.warn('🚧 Supabase connection skipped - invalid credentials');
-  console.warn('🔗 Please update your .env file with valid Supabase credentials');
-}
+});
+
+// Add authentication state change listener for debugging
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('🔄 Auth state change:', {
+    event,
+    user: session?.user?.email || 'none',
+    timestamp: new Date().toISOString()
+  });
+  
+  if (event === 'SIGNED_IN') {
+    console.log('✅ User signed in:', session?.user?.email);
+  } else if (event === 'SIGNED_OUT') {
+    console.log('👋 User signed out');
+  } else if (event === 'TOKEN_REFRESHED') {
+    console.log('🔄 Token refreshed for:', session?.user?.email);
+  }
+});
 
 // Database types
 export interface User {

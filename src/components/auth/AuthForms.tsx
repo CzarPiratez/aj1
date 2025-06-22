@@ -48,8 +48,19 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
     setLoading(true);
 
     try {
+      console.log(`🔐 ${isLogin ? 'Sign in' : 'Sign up'} attempt:`, { 
+        email: email.trim().toLowerCase(),
+        timestamp: new Date().toISOString()
+      });
+
       if (isLogin) {
-        console.log('🔐 Attempting to sign in with:', { email });
+        // Clear any existing session first
+        await supabase.auth.signOut();
+        
+        // Wait a moment for cleanup
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log('🔐 Attempting to sign in with:', { email: email.trim().toLowerCase() });
         
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
@@ -57,19 +68,66 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
         });
         
         if (error) {
-          console.error('❌ Sign in error:', error);
+          console.error('❌ Sign in error:', {
+            message: error.message,
+            status: error.status,
+            details: error
+          });
           throw error;
         }
         
-        console.log('✅ Sign in successful:', data.user?.email);
+        console.log('✅ Sign in successful:', {
+          user: data.user?.email,
+          id: data.user?.id,
+          confirmed: data.user?.email_confirmed_at ? 'Yes' : 'No'
+        });
         
-        // Wait a moment for the auth state to update
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Verify user profile exists and create if needed
+        if (data.user) {
+          console.log('👤 Checking/creating user profile...');
+          
+          const { data: profile, error: profileError } = await supabase
+            .from('users')
+            .select('id, email, full_name')
+            .eq('id', data.user.id)
+            .maybeSingle();
+          
+          if (profileError && profileError.code !== 'PGRST116') {
+            console.error('❌ Profile check error:', profileError);
+          }
+          
+          if (!profile) {
+            console.log('📝 Creating user profile...');
+            const { error: createError } = await supabase
+              .from('users')
+              .insert({
+                id: data.user.id,
+                email: data.user.email,
+                full_name: data.user.user_metadata?.full_name || 
+                          data.user.user_metadata?.name || 
+                          data.user.email?.split('@')[0] || 
+                          'User',
+                avatar_url: data.user.user_metadata?.avatar_url || null,
+              });
+            
+            if (createError) {
+              console.error('❌ Error creating user profile:', createError);
+            } else {
+              console.log('✅ User profile created successfully');
+            }
+          } else {
+            console.log('✅ User profile exists:', profile.email);
+          }
+        }
         
         toast.success('Welcome back to AidJobs!');
         onSuccess?.();
+        
       } else {
-        console.log('📝 Attempting to sign up with:', { email, name });
+        console.log('📝 Attempting to sign up with:', { 
+          email: email.trim().toLowerCase(),
+          name: name.trim()
+        });
         
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
@@ -83,11 +141,19 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
         });
         
         if (error) {
-          console.error('❌ Sign up error:', error);
+          console.error('❌ Sign up error:', {
+            message: error.message,
+            status: error.status,
+            details: error
+          });
           throw error;
         }
         
-        console.log('✅ Sign up successful:', data.user?.email);
+        console.log('✅ Sign up successful:', {
+          user: data.user?.email,
+          id: data.user?.id,
+          confirmed: data.user?.email_confirmed_at ? 'Yes' : 'No'
+        });
         
         if (data.user && !data.user.email_confirmed_at) {
           toast.success('Account created! Please check your email to confirm your account.');
@@ -101,7 +167,11 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
         setName('');
       }
     } catch (error: any) {
-      console.error('❌ Authentication error:', error);
+      console.error('❌ Authentication error:', {
+        message: error.message,
+        status: error.status,
+        details: error
+      });
       
       let errorMessage = 'An error occurred. Please try again.';
       
@@ -169,44 +239,46 @@ export function AuthForms({ onSuccess }: AuthFormsProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {!isLogin && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-1"
-          >
-            <Label 
-              htmlFor="name" 
-              className="text-xs font-normal"
-              style={{ color: '#3A3936' }}
+        <AnimatePresence mode="wait">
+          {!isLogin && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-1"
             >
-              Full Name
-            </Label>
-            <div className="relative">
-              <User 
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
-                style={{ color: '#66615C' }}
-              />
-              <Input
-                id="name"
-                type="text"
-                placeholder="Enter your full name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="pl-9 h-10 rounded-xl border font-light text-sm"
-                style={{ 
-                  backgroundColor: '#FFFFFF',
-                  borderColor: '#D8D5D2',
-                  color: '#3A3936'
-                }}
-                required={!isLogin}
-                disabled={loading}
-              />
-            </div>
-          </motion.div>
-        )}
+              <Label 
+                htmlFor="name" 
+                className="text-xs font-normal"
+                style={{ color: '#3A3936' }}
+              >
+                Full Name
+              </Label>
+              <div className="relative">
+                <User 
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
+                  style={{ color: '#66615C' }}
+                />
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="pl-9 h-10 rounded-xl border font-light text-sm"
+                  style={{ 
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#D8D5D2',
+                    color: '#3A3936'
+                  }}
+                  required={!isLogin}
+                  disabled={loading}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="space-y-1">
           <Label 
