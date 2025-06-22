@@ -37,9 +37,6 @@ export function AuthDebugResetPage() {
   const [showFullKey, setShowFullKey] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  // Check if user is authorized
-  const isAuthorized = user?.email === 'mir.m@outlook.com';
-
   const loadDebugInfo = async () => {
     setLoading(true);
     try {
@@ -156,39 +153,6 @@ export function AuthDebugResetPage() {
     if (!key || key.length <= 10) return key;
     return key.substring(0, 6) + '*'.repeat(key.length - 10) + key.substring(key.length - 4);
   };
-
-  // Show unauthorized message if user is not authorized
-  if (!loading && !isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F9F7F4' }}>
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
-        >
-          <div 
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
-            style={{ backgroundColor: '#D5765B' }}
-          >
-            <Shield className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-2xl font-medium mb-4" style={{ color: '#3A3936' }}>
-            Access Restricted
-          </h1>
-          <p className="text-lg mb-6" style={{ color: '#66615C' }}>
-            This page is only accessible to authorized users.
-          </p>
-          <Button
-            onClick={() => window.location.href = '/'}
-            className="text-white"
-            style={{ backgroundColor: '#D5765B' }}
-          >
-            Return to Home
-          </Button>
-        </motion.div>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
