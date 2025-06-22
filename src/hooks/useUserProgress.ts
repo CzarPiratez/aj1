@@ -259,6 +259,66 @@ export function useUserProgress(userId?: string) {
     }
   }, [userId, ensureUserProgressRecord]);
 
+  // Reset all progress flags to false
+  const resetAllProgressFlags = useCallback(async () => {
+    if (!userId) {
+      console.warn('⚠️ Cannot reset flags: userId is not provided');
+      return false;
+    }
+
+    try {
+      console.log(`🔄 Resetting all progress flags for user ${userId}`);
+      
+      // Ensure user and progress record exist first
+      const recordExists = await ensureUserProgressRecord(userId);
+      if (!recordExists) {
+        console.error('❌ Failed to ensure user progress record exists before reset');
+        return false;
+      }
+
+      // Create reset object with all flags set to false
+      const resetFlags = {
+        has_uploaded_cv: false,
+        has_analyzed_cv: false,
+        has_selected_job: false,
+        has_written_cover_letter: false,
+        has_published_job: false,
+        has_applied_to_job: false,
+        has_started_jd: false,
+        has_submitted_jd_inputs: false,
+        has_generated_jd: false,
+        jd_generation_failed: false,
+      };
+
+      const { error } = await supabase
+        .from('user_progress_flags')
+        .update(resetFlags)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('❌ Error resetting user progress flags:', {
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          userId
+        });
+        return false;
+      }
+
+      // Update local state
+      setFlags(resetFlags);
+      console.log(`✅ Successfully reset all progress flags for user ${userId}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error in resetAllProgressFlags:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId
+      });
+      return false;
+    }
+  }, [userId, ensureUserProgressRecord]);
+
   useEffect(() => {
     fetchFlags();
   }, [fetchFlags]);
@@ -268,6 +328,7 @@ export function useUserProgress(userId?: string) {
     loading,
     updateFlag,
     updateFlags,
+    resetAllProgressFlags,
     refetch: fetchFlags,
   };
 }

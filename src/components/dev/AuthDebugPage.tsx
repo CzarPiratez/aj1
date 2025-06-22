@@ -18,7 +18,8 @@ import {
   EyeOff,
   Clock,
   Activity,
-  Settings
+  Settings,
+  RotateCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,6 +35,7 @@ import {
   clearAuthDebugLog,
   type AuthDebugInfo 
 } from '@/lib/authDebug';
+import { useUserProgress } from '@/hooks/useUserProgress';
 import { toast } from 'sonner';
 
 // Correct Supabase project constants
@@ -45,6 +47,10 @@ export function AuthDebugPage() {
   const [loading, setLoading] = useState(true);
   const [showFullKeys, setShowFullKeys] = useState(false);
   const [debugLog, setDebugLog] = useState<any[]>([]);
+  const [isResettingProgress, setIsResettingProgress] = useState(false);
+
+  // Get user progress hook for the current user
+  const { flags, resetAllProgressFlags } = useUserProgress(debugInfo?.userId);
 
   const loadDebugInfo = async () => {
     setLoading(true);
@@ -105,6 +111,34 @@ export function AuthDebugPage() {
     clearAuthDebugLog();
     setDebugLog([]);
     toast.success('Debug log cleared');
+  };
+
+  const handleResetProgressFlags = async () => {
+    if (!debugInfo?.userId) {
+      toast.error('No user ID available for progress reset');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to reset ALL progress flags? This will set all user progress indicators to false and cannot be undone.')) {
+      return;
+    }
+
+    setIsResettingProgress(true);
+    
+    try {
+      const success = await resetAllProgressFlags();
+      
+      if (success) {
+        toast.success('All progress flags reset successfully');
+      } else {
+        toast.error('Failed to reset progress flags');
+      }
+    } catch (error) {
+      console.error('Error resetting progress flags:', error);
+      toast.error('Failed to reset progress flags');
+    } finally {
+      setIsResettingProgress(false);
+    }
   };
 
   // Check if current config matches correct values
@@ -483,11 +517,69 @@ export function AuthDebugPage() {
             </motion.div>
           )}
 
+          {/* User Progress Flags */}
+          {debugInfo?.userId && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center text-lg">
+                    <Activity className="w-5 h-5 mr-2" style={{ color: '#D5765B' }} />
+                    User Progress Flags
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {Object.entries(flags).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span style={{ color: '#3A3936' }}>
+                          {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        </span>
+                        <Badge variant={value ? 'default' : 'outline'} className="text-xs">
+                          {value ? 'True' : 'False'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <Separator />
+                  
+                  <Button
+                    onClick={handleResetProgressFlags}
+                    disabled={isResettingProgress}
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
+                  >
+                    {isResettingProgress ? (
+                      <>
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-orange-600 mr-2"></div>
+                        Resetting...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reset All Progress Flags
+                      </>
+                    )}
+                  </Button>
+                  
+                  <p className="text-xs text-center" style={{ color: '#66615C' }}>
+                    This will reset all progress indicators to false
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
           {/* Debug Actions */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.5 }}
           >
             <Card>
               <CardHeader>
@@ -532,7 +624,7 @@ export function AuthDebugPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            transition={{ delay: 0.6 }}
             className="mt-6"
           >
             <Card>
