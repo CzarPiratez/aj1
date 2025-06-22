@@ -663,10 +663,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the corrected assistant message
+      // Send the smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Job Brief and organization or project link\n2. Upload a JD Draft\n3. Paste a Job Brief\n4. Paste a Link to an old Job\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Paste a brief (e.g., \"We need a field coordinator for a migration project…\")\n2. Upload a JD draft you've written — I'll refine and improve it.\n3. Paste a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -842,7 +842,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           </div>
                         )}
 
-                        {/* JD Request indicators - Updated with correct text and font weight */}
+                        {/* JD Request indicators - Fixed colors and removed icons */}
                         {message.type === 'jd-request' && (
                           <div className="flex items-center mt-3">
                             <span className="text-xs font-light" style={{ color: '#D5765B' }}>
@@ -968,7 +968,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
