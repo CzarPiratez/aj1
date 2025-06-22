@@ -23,7 +23,7 @@ export interface AIResponse {
   };
 }
 
-// OpenRouter configuration using updated API keys
+// OpenRouter configuration using only environment variables
 const AI_CONFIGS: AIConfig[] = [
   {
     type: 'openrouter',
@@ -69,7 +69,7 @@ export function validateAIConfig(): boolean {
   return true;
 }
 
-// Enhanced error logging to Supabase with better authentication handling
+// Enhanced error logging to Supabase with better error handling
 async function logError(
   errorType: string,
   details: string,
@@ -104,6 +104,8 @@ async function logError(
     if (error) {
       console.error('Failed to log error to database:', error);
       // Don't throw here to avoid infinite loops
+    } else {
+      console.log('✅ Error logged to database successfully');
     }
   } catch (error) {
     console.error('Failed to log error to database:', error);
@@ -179,7 +181,6 @@ export async function callOpenRouter(
   for (const config of validConfigs) {
     try {
       console.log(`🤖 Trying ${config.name} with model: ${modelName}`);
-      console.log(`🔑 Using key: ${config.key.substring(0, 20)}...`);
       
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -215,12 +216,16 @@ export async function callOpenRouter(
           throw new Error(errorMessage);
         }
         
-        // Log non-rate-limit errors
-        await logError(
-          'AI_API_ERROR',
-          errorMessage,
-          `callOpenRouter - ${config.name}`
-        );
+        // Log non-rate-limit errors (but don't fail if logging fails)
+        try {
+          await logError(
+            'AI_API_ERROR',
+            errorMessage,
+            `callOpenRouter - ${config.name}`
+          );
+        } catch (logError) {
+          console.warn('Could not log error to database:', logError);
+        }
         
         throw new Error(errorMessage);
       }
@@ -230,11 +235,15 @@ export async function callOpenRouter(
       if (!validateAIResponse(data)) {
         const errorMessage = 'Invalid or insufficient response from AI model';
         
-        await logError(
-          'AI_VALIDATION_ERROR',
-          `${errorMessage} - Response: ${JSON.stringify(data)}`,
-          `callOpenRouter - ${config.name}`
-        );
+        try {
+          await logError(
+            'AI_VALIDATION_ERROR',
+            `${errorMessage} - Response: ${JSON.stringify(data)}`,
+            `callOpenRouter - ${config.name}`
+          );
+        } catch (logError) {
+          console.warn('Could not log error to database:', logError);
+        }
         
         throw new Error(errorMessage);
       }
@@ -278,11 +287,15 @@ Rate limited: ${rateLimitedKeys.join(', ')}
 Last error: ${lastError?.message}`;
   }
   
-  await logError(
-    'AI_ALL_KEYS_FAILED',
-    `All ${validConfigs.length} keys failed. Rate limited: ${rateLimitedKeys.length}. Last error: ${lastError?.message}`,
-    'callOpenRouter'
-  );
+  try {
+    await logError(
+      'AI_ALL_KEYS_FAILED',
+      `All ${validConfigs.length} keys failed. Rate limited: ${rateLimitedKeys.length}. Last error: ${lastError?.message}`,
+      'callOpenRouter'
+    );
+  } catch (logError) {
+    console.warn('Could not log error to database:', logError);
+  }
   
   throw new Error(errorMessage);
 }
@@ -731,13 +744,17 @@ export async function checkAIStatus(): Promise<{
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Only log non-rate-limit errors to avoid spam
+    // Only log non-rate-limit errors to avoid spam (but don't fail if logging fails)
     if (!errorMessage.includes('429') && !errorMessage.includes('rate limit')) {
-      await logError(
-        'AI_STATUS_CHECK_ERROR',
-        errorMessage,
-        'checkAIStatus'
-      );
+      try {
+        await logError(
+          'AI_STATUS_CHECK_ERROR',
+          errorMessage,
+          'checkAIStatus'
+        );
+      } catch (logError) {
+        console.warn('Could not log error to database:', logError);
+      }
     }
     
     return {
