@@ -13,7 +13,8 @@ import {
   X,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Bug
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -21,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AuthDebugModal } from '@/components/auth/AuthDebugModal';
 
 interface SidebarProps {
   currentPage: string;
@@ -77,6 +79,7 @@ const menuItems = [
 export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = false }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [showAuthDebug, setShowAuthDebug] = useState(false);
 
   const handleSignOut = async () => {
     try {
@@ -85,6 +88,11 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
       console.error('Error signing out:', error);
     }
   };
+
+  // Check if user should see debug option
+  const showDebugOption = profile?.email === 'mir.m@outlook.com' || 
+                         window.location.hostname === 'localhost' ||
+                         window.location.hostname.includes('127.0.0.1');
 
   const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <TooltipProvider delayDuration={300}>
@@ -311,6 +319,81 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
             return <div key={item.id}>{buttonContent}</div>;
           })}
 
+          {/* Auth Debug Button - only visible to authorized users */}
+          {showDebugOption && (
+            <>
+              <div className="pt-1.5">
+                <Separator style={{ backgroundColor: '#D8D5D2' }} />
+              </div>
+              
+              {(() => {
+                const buttonContent = (
+                  <motion.button
+                    onClick={() => setShowAuthDebug(true)}
+                    className={cn(
+                      'w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg text-left transition-all duration-200 relative group mt-1.5',
+                      'font-light hover:shadow-sm'
+                    )}
+                    style={{
+                      backgroundColor: 'transparent',
+                      color: '#66615C',
+                      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                    }}
+                    whileHover={{ 
+                      backgroundColor: '#FFFFFF',
+                      transition: { duration: 0.15 }
+                    }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Bug 
+                      className="w-3.5 h-3.5 flex-shrink-0" 
+                      style={{ color: '#D5765B' }}
+                    />
+                    <AnimatePresence>
+                      {(!isCollapsed || isMobile) && (
+                        <motion.span
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: 'auto' }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="truncate text-xs"
+                        >
+                          🔐 Auth Debug
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </motion.button>
+                );
+
+                if (isCollapsed && !isMobile) {
+                  return (
+                    <Tooltip key="auth-debug">
+                      <TooltipTrigger asChild>
+                        {buttonContent}
+                      </TooltipTrigger>
+                      <TooltipContent 
+                        side="right" 
+                        align="start"
+                        className="text-left max-w-xs"
+                        style={{
+                          backgroundColor: '#3A3936',
+                          color: '#F9F7F4',
+                          border: 'none',
+                          padding: '8px 12px'
+                        }}
+                      >
+                        <div className="text-xs font-medium mb-1">🔐 Auth Debug</div>
+                        <div className="text-xs opacity-90 leading-relaxed">Debug Supabase authentication and reset sessions</div>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+
+                return buttonContent;
+              })()}
+            </>
+          )}
+
           {/* Admin Panel - only visible to superadmin */}
           {profile?.is_admin && (
             <>
@@ -466,6 +549,12 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
           </div>
         </div>
       </div>
+
+      {/* Auth Debug Modal */}
+      <AuthDebugModal 
+        isOpen={showAuthDebug} 
+        onClose={() => setShowAuthDebug(false)} 
+      />
     </TooltipProvider>
   );
 
