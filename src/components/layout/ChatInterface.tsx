@@ -647,6 +647,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setTimeout(() => handleSend(), 100);
   };
 
+  const handleAutoSubmit = (message: string) => {
+    setInput(message);
+    // Auto-send the message
+    setTimeout(() => handleSend(), 100);
+  };
+
   const handleInactiveToolClick = (message: string) => {
     const inactiveMessage: Message = {
       id: Date.now().toString(),
@@ -991,6 +997,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                   <CategorizedToolDropdowns
                     flags={flags}
                     onToolAction={handleToolAction}
+                    onAutoSubmit={handleAutoSubmit}
                     onInactiveToolClick={handleInactiveToolClick}
                     disabled={isTyping || isProcessingUrl || isProcessingJD}
                   />
