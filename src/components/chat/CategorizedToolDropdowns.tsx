@@ -151,7 +151,17 @@ export function CategorizedToolDropdowns({
       description: 'Generate a high-quality, inclusive job description using AI. Paste a job brief, upload an old JD, or share a link.',
       isActive: () => true,
       inactiveMessage: '',
-      autoSubmitMessage: "Hi! Let's begin — I'm ready for your input."
+      autoSubmitMessage: `Let's get started on your job description. You can begin in any of these ways:
+
+Job Brief + Organization or Project Link
+
+Job Brief
+
+Upload a JD Draft (PDF or DOCX)
+
+Paste a Link to a reference job post
+
+Go ahead and share whichever works best for you — I'll take it from there.`
     },
     {
       id: 'match-candidates',
