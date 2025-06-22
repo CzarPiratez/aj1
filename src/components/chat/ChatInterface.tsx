@@ -66,6 +66,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isProcessingJD, setIsProcessingJD] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -306,17 +307,36 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
+  // Legacy tool action handler - restored
   const handleToolAction = (toolId: string, message: string) => {
-    // Clean JD tool - no response at all
-    if (toolId === 'post-job-generate-jd') {
-      console.log('🎯 JD Tool clicked - no response configured');
+    // Special handling for JD tool
+    if (message === 'POST_JD_TOOL_TRIGGER') {
+      console.log('🎯 JD Tool triggered');
+      
+      // Update progress flag
+      updateFlag('has_started_jd', true);
+      
+      // Set awaiting input state
+      setAwaitingJDInput(true);
+      
+      // Send the smart assistant message
+      const jdRequestMessage: Message = {
+        id: Date.now().toString(),
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'jd-request',
+        metadata: {
+          isJDRequest: true
+        }
+      };
+      
+      setMessages(prev => [...prev, jdRequestMessage]);
       return;
     }
     
-    // For other tools, use the existing logic
-    setInput(message);
-    // Auto-send the message
-    setTimeout(() => handleSend(), 100);
+    // For other tools, this should not auto-submit
+    console.log('Tool action triggered but not auto-submitting:', toolId, message);
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -328,6 +348,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
+  };
+
+  // Legacy input setter - restored
+  const handleSetInput = (message: string) => {
+    setInput(message);
+    // Do NOT auto-submit - wait for user to press Enter
   };
 
   // Job action handlers
@@ -678,12 +704,13 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                   <Paperclip className="w-2.5 h-2.5" />
                 </Button>
 
-                {/* Categorized Tool Dropdowns */}
+                {/* Categorized Tool Dropdowns - with restored legacy handlers */}
                 {!progressLoading && (
                   <CategorizedToolDropdowns
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
+                    onSetInput={handleSetInput}
                     disabled={isTyping || isProcessingJD}
                   />
                 )}
