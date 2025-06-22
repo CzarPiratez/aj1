@@ -66,6 +66,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isProcessingJD, setIsProcessingJD] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -307,16 +308,36 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Clean JD tool - no response at all
-    if (toolId === 'post-job-generate-jd') {
-      console.log('🎯 JD Tool clicked - no response configured');
+    // Special handling for JD tool
+    if (message === 'POST_JD_TOOL_TRIGGER') {
+      console.log('🎯 JD Tool triggered');
+      
+      // Update progress flag
+      updateFlag('has_started_jd', true);
+      
+      // Set awaiting input state
+      setAwaitingJDInput(true);
+      
+      // Send the smart assistant message immediately
+      const jdRequestMessage: Message = {
+        id: Date.now().toString(),
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'jd-request',
+        metadata: {
+          isJDRequest: true
+        }
+      };
+      
+      setMessages(prev => [...prev, jdRequestMessage]);
       return;
     }
     
-    // For other tools, use the existing logic
+    // For all other tools, auto-submit the message immediately
     setInput(message);
-    // Auto-send the message
-    setTimeout(() => handleSend(), 100);
+    // Auto-send the message after a brief delay to ensure input is set
+    setTimeout(() => handleSend(), 50);
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -609,7 +630,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.json"
+            accept={awaitingJDInput ? ".doc,.docx,.pdf" : ".pdf,.docx,.txt,.json"}
             onChange={handleFileChange}
             className="hidden"
           />
@@ -634,7 +655,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder="Ask me anything about jobs, CVs, or matches..."
+                placeholder={awaitingJDInput ? "Paste a brief, upload a file, or share a job posting URL..." : "Ask me anything about jobs, CVs, or matches..."}
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -667,16 +688,23 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               style={{ borderColor: '#F1EFEC' }}
             >
               <div className="flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleFileUpload}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ color: '#66615C' }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  <Paperclip className="w-2.5 h-2.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleFileUpload}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ color: '#66615C' }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      <Paperclip className="w-2.5 h-2.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {awaitingJDInput ? 'Upload JD file (.doc, .docx, .pdf)' : 'Attach files (.pdf, .docx, .txt, .json)'}
+                  </TooltipContent>
+                </Tooltip>
 
                 {/* Categorized Tool Dropdowns */}
                 {!progressLoading && (
@@ -688,23 +716,30 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                   />
                 )}
 
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleRecording}
-                  className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
-                  style={{ 
-                    color: isRecording ? '#D5765B' : '#66615C',
-                    backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
-                  }}
-                  disabled={isTyping || isProcessingJD}
-                >
-                  {isRecording ? (
-                    <Square className="w-2.5 h-2.5" />
-                  ) : (
-                    <Mic className="w-2.5 h-2.5" />
-                  )}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleRecording}
+                      className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
+                      style={{ 
+                        color: isRecording ? '#D5765B' : '#66615C',
+                        backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
+                      }}
+                      disabled={isTyping || isProcessingJD}
+                    >
+                      {isRecording ? (
+                        <Square className="w-2.5 h-2.5" />
+                      ) : (
+                        <Mic className="w-2.5 h-2.5" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
+                    {isRecording ? 'Stop recording' : 'Voice input'}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               <div className="flex items-center space-x-1 text-xs" style={{ color: '#66615C' }}>
@@ -720,7 +755,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              Press Enter to send, Shift+Enter for new line
+              {awaitingJDInput ? 'Provide job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
