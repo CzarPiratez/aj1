@@ -37,14 +37,12 @@ interface Tool {
   description: string;
   isActive: (flags: UserProgressFlags) => boolean;
   inactiveMessage: string;
-  autoSubmitMessage?: string; // New property for auto-submit tools
 }
 
 interface CategorizedToolDropdownsProps {
   flags: UserProgressFlags;
   onToolAction: (toolId: string, message: string) => void;
   onInactiveToolClick: (message: string) => void;
-  onAutoSubmit?: (message: string) => void; // New prop for direct auto-submit
   disabled?: boolean;
 }
 
@@ -52,7 +50,6 @@ export function CategorizedToolDropdowns({
   flags, 
   onToolAction, 
   onInactiveToolClick, 
-  onAutoSubmit,
   disabled = false 
 }: CategorizedToolDropdownsProps) {
   
@@ -141,8 +138,7 @@ export function CategorizedToolDropdowns({
       icon: Building,
       description: 'Create a compelling organization profile',
       isActive: () => true,
-      inactiveMessage: '',
-      autoSubmitMessage: "I'll help you create a compelling organization profile that showcases your mission, values, and culture to attract top talent. Please share your organization's website URL or provide some details about your organization, mission, and the type of work you do."
+      inactiveMessage: ''
     },
     {
       id: 'post-job-generate-jd',
@@ -150,8 +146,7 @@ export function CategorizedToolDropdowns({
       icon: Briefcase,
       description: 'Generate a high-quality job description using AI.',
       isActive: () => true,
-      inactiveMessage: '',
-      autoSubmitMessage: "Let's create a professional job description together! You can provide input in three ways:\n\n1. **Share a brief** (e.g., \"We need a field coordinator for a migration project...\")\n2. **Upload a JD draft** you've written — I'll refine and improve it\n3. **Share a link** to an existing job post — I'll rewrite it with better clarity and alignment\n\nWhat would you like to start with?"
+      inactiveMessage: ''
     },
     {
       id: 'match-candidates',
@@ -159,8 +154,7 @@ export function CategorizedToolDropdowns({
       icon: Users,
       description: 'Find the best candidates for your posted jobs',
       isActive: (flags) => flags.has_published_job,
-      inactiveMessage: "Once you've published a job, I can help you find and match the best candidates. Let's start by creating your job posting!",
-      autoSubmitMessage: "I'll help you find and match the best candidates for your published jobs. I can analyze candidate profiles against your job requirements, considering skills, experience, cultural fit, and mission alignment. Which job would you like me to help you find candidates for?"
+      inactiveMessage: "Once you've published a job, I can help you find and match the best candidates. Let's start by creating your job posting!"
     }
   ];
 
@@ -168,15 +162,9 @@ export function CategorizedToolDropdowns({
     const isActive = tool.isActive(flags);
     
     if (isActive) {
-      // Check if this is an organization tool with auto-submit message
-      if (tool.autoSubmitMessage && onAutoSubmit) {
-        console.log(`🚀 Auto-submitting organization tool: ${tool.id}`);
-        onAutoSubmit(tool.autoSubmitMessage);
-      } else {
-        // Regular tool behavior (no auto-submit)
-        console.log(`🔧 Tool clicked: ${tool.id} - Regular behavior`);
-        onToolAction(tool.id, '');
-      }
+      // CLEANED UP: No longer auto-submits or stages messages in input field
+      console.log(`🔧 Tool clicked: ${tool.id} - Cleaned up, no auto-submit`);
+      onToolAction(tool.id, ''); // Empty message, no staging
     } else {
       onInactiveToolClick(tool.inactiveMessage);
     }
