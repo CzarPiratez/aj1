@@ -666,7 +666,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Send the smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Paste a brief (e.g., \"We need a field coordinator for a migration project…\")\n2. Upload a JD draft you've written — I'll refine and improve it.\n3. Paste a link to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -824,10 +824,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
-                                         message.type === 'jd-request' ? '#E8F5E8' : '#F1EFEC',
+                                         message.type === 'jd-request' ? '#FBE4D5' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
-                                          message.type === 'jd-request' ? '#10B981' : 'transparent'
+                                          message.type === 'jd-request' ? '#D5765B' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
@@ -842,10 +842,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           </div>
                         )}
 
-                        {/* JD Request indicators - Updated to remove icons and show slim text */}
+                        {/* JD Request indicators - Fixed colors and removed icons */}
                         {message.type === 'jd-request' && (
                           <div className="flex items-center mt-3">
-                            <span className="text-xs font-medium" style={{ color: '#10B981' }}>
+                            <span className="text-xs font-light" style={{ color: '#D5765B' }}>
                               Job Brief + Link • Upload • Job Brief • Link
                             </span>
                           </div>
