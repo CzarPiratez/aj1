@@ -175,8 +175,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   };
 
   const handleSend = async (messageContent?: string) => {
-    // Improved message handling to prevent input state issues
-    const messageToSend = (messageContent ?? input).trim();
+    const messageToSend = messageContent || input.trim();
     if (!messageToSend) return;
 
     const userMessage: Message = {
@@ -454,11 +453,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const handleAutoSubmit = (message: string) => {
     console.log('🚀 Auto-submitting message:', message);
     
-    // More flexible condition to detect JD messages
-    if (message.toLowerCase().includes("let's get started") || 
-        message.toLowerCase().includes("let's begin") ||
-        message.toLowerCase().includes("ready for your input")) {
-      console.log('🎯 JD tool message detected, setting awaitingJDInput = true');
+    // Check if this is the JD tool message to set awaiting state
+    if (message === "Hi! Let's begin — I'm ready for your input.") {
       setAwaitingJDInput(true);
     }
     
