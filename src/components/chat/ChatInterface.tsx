@@ -102,26 +102,30 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  const handleSend = async (messageContent?: string) => {
+    const messageToSend = messageContent || input.trim();
+    if (!messageToSend) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: input,
+      content: messageToSend,
       sender: 'user',
       timestamp: new Date(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const currentInput = input;
-    setInput('');
+    
+    // Only clear input if we're using the input field (not auto-submit)
+    if (!messageContent) {
+      setInput('');
+    }
 
     setIsTyping(true);
 
     // Use AI service for enhanced responses
     try {
       const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      const aiResponse = await generateChatResponse(messageToSend, conversationContext, profile);
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -131,22 +135,22 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       };
 
       setMessages(prev => [...prev, responseMessage]);
-      updateMainContent(currentInput);
-      await updateProgressBasedOnInput(currentInput);
+      updateMainContent(messageToSend);
+      await updateProgressBasedOnInput(messageToSend);
     } catch (error) {
       console.error('Error getting AI response:', error);
       
       // Fallback to simple response
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: generateSimpleResponse(currentInput),
+        content: generateSimpleResponse(messageToSend),
         sender: 'assistant',
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, aiResponse]);
-      updateMainContent(currentInput);
-      await updateProgressBasedOnInput(currentInput);
+      updateMainContent(messageToSend);
+      await updateProgressBasedOnInput(messageToSend);
     } finally {
       setIsTyping(false);
     }
@@ -322,6 +326,12 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
+  };
+
+  // NEW: Handle auto-submit for organization tools
+  const handleAutoSubmit = (message: string) => {
+    console.log('🚀 Auto-submitting message:', message);
+    handleSend(message);
   };
 
   // Job action handlers
@@ -643,7 +653,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 className="flex-shrink-0"
               >
                 <Button
-                  onClick={handleSend}
+                  onClick={() => handleSend()}
                   disabled={!canSend}
                   className="h-6 w-6 rounded-lg text-white transition-all duration-200 shadow-sm p-0 flex items-center justify-center"
                   style={{ 
@@ -685,6 +695,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
+                    onAutoSubmit={handleAutoSubmit}
                     disabled={isTyping || isProcessingJD}
                   />
                 )}
