@@ -45,15 +45,13 @@ interface CategorizedToolDropdownsProps {
   onToolAction: (toolId: string, message: string) => void;
   onInactiveToolClick: (message: string) => void;
   disabled?: boolean;
-  aiConnected?: boolean;
 }
 
 export function CategorizedToolDropdowns({ 
   flags, 
   onToolAction, 
   onInactiveToolClick, 
-  disabled = false,
-  aiConnected = true
+  disabled = false 
 }: CategorizedToolDropdownsProps) {
   
   const cvTools: Tool[] = [
@@ -157,16 +155,12 @@ export function CategorizedToolDropdowns({
       id: 'post-job-generate-jd',
       label: 'Post a Job / Generate JD',
       icon: Briefcase,
-      description: 'Generate a high-quality job description using AI',
+      description: 'Generate a high-quality job description using AI.',
       isActive: () => true,
       inactiveMessage: '',
       action: () => {
-        // Auto-submit enabled - respond immediately when clicked
-        const message = aiConnected 
-          ? "Welcome. Please choose one of the following input types:\n\n1. Job Brief + org/project link\n2. Job Brief\n3. Upload a JD draft (PDF/DOCX)\n4. Paste a link to a reference job post\n\nI'll detect what you've provided and generate a structured, inclusive job description tailored for the nonprofit and development sector."
-          : "The system is currently offline. Please paste or upload your job information — it will be saved and processed once AI connectivity is restored.";
-        
-        onToolAction('post-job-generate-jd', message);
+        // Clean tool - no response, no logic, just silent click
+        console.log('JD tool clicked - no response configured');
       }
     },
     {
