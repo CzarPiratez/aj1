@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { LandingPage } from '@/components/landing/LandingPage';
 import { AuthenticatedLayout } from '@/components/@authenticated/layout';
 import { AuthDebugPage } from '@/components/dev/AuthDebugPage';
+import { AuthDebugResetPage } from '@/components/auth/AuthDebugResetPage';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner';
 import { autoCleanupOnLoad, logAuthEvent } from '@/lib/authDebug';
@@ -162,6 +163,9 @@ function App() {
         <Routes>
           {/* Developer-only auth debug route */}
           <Route path="/dev/auth-debug" element={<AuthDebugPage />} />
+          
+          {/* Auth Debug & Reset page */}
+          <Route path="/auth-debug" element={<AuthDebugResetPage />} />
           
           {/* Main application routes */}
           <Route path="/*" element={
