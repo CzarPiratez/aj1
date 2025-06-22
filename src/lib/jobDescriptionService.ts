@@ -43,6 +43,20 @@ function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: str
   }
 }
 
+// Map input type to database-compatible value
+function mapInputTypeForDatabase(inputType: 'brief' | 'upload' | 'link'): string {
+  // Based on the database constraint, only 'website' and 'manual' are allowed
+  switch (inputType) {
+    case 'link':
+      return 'website';
+    case 'brief':
+    case 'upload':
+      return 'manual';
+    default:
+      return 'manual';
+  }
+}
+
 // URL validation
 export function isValidUrl(string: string): boolean {
   try {
@@ -167,12 +181,15 @@ export async function processJDInput(
     // Generate input summary
     const inputSummary = generateInputSummary(inputType, input);
 
+    // Map input type to database-compatible value
+    const dbInputType = mapInputTypeForDatabase(inputType);
+
     // Save to database
     const { data, error } = await supabase
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: inputType,
+        input_type: dbInputType, // Use mapped value instead of original inputType
         raw_input: rawInput,
         input_summary: inputSummary,
         content: content,
@@ -210,11 +227,14 @@ export async function createFallbackDraft(
   try {
     console.log('🔄 Creating fallback draft due to AI rate limit');
     
+    // Map input type to database-compatible value
+    const dbInputType = mapInputTypeForDatabase(inputType);
+    
     const { data, error } = await supabase
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: inputType,
+        input_type: dbInputType, // Use mapped value instead of original inputType
         raw_input: rawInput,
         input_summary: inputSummary,
         content: rawInput,
@@ -254,8 +274,23 @@ export async function generateJDFromInput(draft: JDDraft): Promise<string> {
 
     let prompt: string;
     
-    if (draft.input_type === 'brief') {
-      prompt = `Create a comprehensive, professional job description based on this brief:
+    if (draft.input_type === 'manual') {
+      // Handle both brief and upload cases since they both map to 'manual'
+      if (draft.file_name) {
+        // This was an upload
+        prompt = `Improve and restructure this job description from the uploaded file:
+
+${draft.content}
+
+Please enhance it by:
+- Improving clarity and readability
+- Adding inclusive language
+- Ensuring proper structure
+- Making it more engaging
+- Following nonprofit sector standards`;
+      } else {
+        // This was a brief
+        prompt = `Create a comprehensive, professional job description based on this brief:
 
 ${draft.content}
 
@@ -269,8 +304,8 @@ Please generate a well-structured job description that includes:
 - Application instructions
 
 Make it inclusive, engaging, and suitable for the nonprofit sector.`;
-
-    } else if (draft.input_type === 'link') {
+      }
+    } else if (draft.input_type === 'website') {
       prompt = `Based on the content from this URL: ${draft.url}
 
 Create an improved, comprehensive job description that:
@@ -281,19 +316,6 @@ Create an improved, comprehensive job description that:
 - Is engaging for mission-driven candidates
 
 Original content: ${draft.content}`;
-
-    } else if (draft.input_type === 'upload') {
-      prompt = `Improve and restructure this job description from the uploaded file:
-
-${draft.content}
-
-Please enhance it by:
-- Improving clarity and readability
-- Adding inclusive language
-- Ensuring proper structure
-- Making it more engaging
-- Following nonprofit sector standards`;
-
     } else {
       throw new Error('Unknown input type');
     }
