@@ -272,7 +272,7 @@ That helps me generate something meaningful.`,
       return;
     }
 
-    // Handle different input types with appropriate responses
+    // Handle link clarification
     if (inputType === 'link_only') {
       console.log('[DEBUG:LINK_ONLY]');
       const clarificationMessage: Message = {
