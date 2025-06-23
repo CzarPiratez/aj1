@@ -686,10 +686,10 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the assistant message immediately
+      // Send the assistant message immediately with all 4 options clearly listed
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Provide a brief and a link** (e.g., \"We need a field coordinator for a migration project…\" + organization website)\n2. **Provide a brief only** (e.g., \"We need a field coordinator for a migration project…\")\n3. **Upload a JD draft** you've written — I'll refine and improve it.\n4. **Paste a link only** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
