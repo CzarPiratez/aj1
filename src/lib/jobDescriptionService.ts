@@ -27,6 +27,9 @@ export interface JDDraft {
   is_ai_generated?: boolean;
   created_at: string;
   updated_at: string;
+  file_name?: string;
+  file_type?: string;
+  url?: string;
 }
 
 // Generate input summary for database storage
@@ -172,7 +175,7 @@ export async function processJDInput(
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: inputType, // Use the inputType directly since it's already 'manual' or 'website'
+        input_type: inputType,
         raw_input: rawInput,
         input_summary: inputSummary,
         content: content,
@@ -214,7 +217,7 @@ export async function createFallbackDraft(
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: inputType, // Use the inputType directly since it's already 'manual' or 'website'
+        input_type: inputType,
         raw_input: rawInput,
         input_summary: inputSummary,
         content: rawInput,
@@ -255,7 +258,7 @@ export async function generateJDFromInput(draft: JDDraft): Promise<string> {
     let prompt: string;
     
     if (draft.input_type === 'manual') {
-      // Handle both brief and upload cases since they both map to 'manual'
+      // Handle both brief and upload cases
       if (draft.file_name) {
         // This was an upload
         prompt = `Improve and restructure this job description from the uploaded file:
