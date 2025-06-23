@@ -22,8 +22,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist node_modules/.vite",
-    "prepare": "npm run type-check",
-    "serve": "vite preview --host 0.0.0.0 --port 4173 --open"
+    "prepare": "npm run type-check"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

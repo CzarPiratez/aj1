@@ -13,25 +13,25 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    host: '0.0.0.0', // Changed from true to explicit IP to ensure external access
+    host: '0.0.0.0',
     port: 5173,
     strictPort: false,
-    open: false, // Prevent auto-opening to avoid conflicts
-    cors: true, // Enable CORS for cross-origin requests
+    open: false,
+    cors: true,
     hmr: {
-      port: 5174, // Use different port for HMR to avoid conflicts
+      port: 5174,
     },
   },
   preview: {
-    host: '0.0.0.0', // Changed from true to explicit IP
+    host: '0.0.0.0',
     port: 4173,
     strictPort: false,
-    open: false, // Prevent auto-opening
-    cors: true, // Enable CORS
+    open: false, // This should be false to prevent auto-opening
+    cors: true,
   },
   build: {
     outDir: 'dist',
-    sourcemap: true, // Enable source maps for debugging
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
