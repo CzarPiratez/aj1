@@ -40,7 +40,7 @@ interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline';
+  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline' | 'jd-modification';
   metadata?: {
     websiteContent?: any;
     jobId?: string;
@@ -49,15 +49,18 @@ interface Message {
     jobData?: any;
     canRetry?: boolean;
     retryDraftId?: string;
+    modifiedSection?: string;
+    originalContent?: string;
   };
 }
 
 interface ChatInterfaceProps {
   onContentChange: (content: any) => void;
   profile?: any;
+  currentJDData?: any;
 }
 
-export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
+export function ChatInterface({ onContentChange, profile, currentJDData }: ChatInterfaceProps) {
   const { flags, loading: progressLoading, updateFlag, updateFlags } = useUserProgress(profile?.id);
   
   const [messages, setMessages] = useState<Message[]>([
@@ -77,6 +80,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [awaitingJDInput, setAwaitingJDInput] = useState(false);
+  const [isModifyingJD, setIsModifyingJD] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,6 +107,22 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   useEffect(() => {
     checkAIConnectivity();
   }, []);
+
+  // Add welcome message when currentJDData changes
+  useEffect(() => {
+    if (currentJDData && messages.length === 1) {
+      // Add a welcome message specific to JD editing
+      const jdWelcomeMessage: Message = {
+        id: Date.now().toString(),
+        content: `I see you're working on a job description for "${currentJDData.title}". I can help you refine specific sections or improve the overall content. Just let me know what you'd like to modify!`,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'jd-modification'
+      };
+      
+      setMessages(prev => [...prev, jdWelcomeMessage]);
+    }
+  }, [currentJDData, messages.length]);
 
   const checkAIConnectivity = async () => {
     try {
@@ -133,12 +153,18 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return;
     }
 
+    // Check if we're modifying a JD and have currentJDData
+    if (currentJDData) {
+      await handleJDModificationRequest(currentInput);
+      return;
+    }
+
     setIsTyping(true);
 
     // Use AI service for enhanced responses
     try {
       const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile, currentJDData);
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -166,6 +192,171 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
+    }
+  };
+
+  const handleJDModificationRequest = async (userInput: string) => {
+    setIsModifyingJD(true);
+    
+    try {
+      // Determine which section the user wants to modify
+      const sectionKeywords: Record<string, string[]> = {
+        'overview': ['overview', 'summary', 'about the role', 'about the position', 'introduction'],
+        'responsibilities': ['responsibilities', 'duties', 'tasks', 'what you will do', 'key responsibilities'],
+        'qualifications': ['qualifications', 'requirements', 'skills', 'experience', 'education', 'background'],
+        'benefits': ['benefits', 'what we offer', 'perks', 'compensation', 'package', 'salary'],
+        'application': ['application', 'how to apply', 'apply', 'submit', 'contact']
+      };
+      
+      const inputLower = userInput.toLowerCase();
+      let targetSectionId: string | null = null;
+      
+      // Check if the input mentions a specific section
+      for (const [sectionId, keywords] of Object.entries(sectionKeywords)) {
+        if (keywords.some(keyword => inputLower.includes(keyword))) {
+          targetSectionId = sectionId;
+          break;
+        }
+      }
+      
+      // If no specific section is mentioned, assume it's about the entire JD
+      const isFullJDModification = !targetSectionId;
+      
+      // Get the section content if a specific section is targeted
+      let originalContent = '';
+      if (targetSectionId) {
+        const section = currentJDData.sections.find((s: any) => s.id === targetSectionId || s.id.includes(targetSectionId));
+        if (section) {
+          originalContent = section.content;
+        } else {
+          // If section not found, assume it's about the entire JD
+          originalContent = currentJDData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n');
+        }
+      } else {
+        // Use the entire JD content
+        originalContent = currentJDData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n');
+      }
+      
+      // Show processing message
+      const processingMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: targetSectionId 
+          ? `I'm working on improving the ${targetSectionId} section based on your feedback...` 
+          : "I'm working on improving the job description based on your feedback...",
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, processingMessage]);
+      
+      // Generate the modified content using AI
+      const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
+      
+      const aiResponse = await generateChatResponse(
+        userInput,
+        conversationContext,
+        profile,
+        {
+          ...currentJDData,
+          targetSection: targetSectionId,
+          originalContent
+        }
+      );
+      
+      // Check if the response contains a modified section or full JD
+      if (targetSectionId) {
+        // Find the section in the current JD data
+        const updatedSections = [...currentJDData.sections];
+        const sectionIndex = updatedSections.findIndex(s => s.id === targetSectionId || s.id.includes(targetSectionId));
+        
+        if (sectionIndex !== -1) {
+          // Update the section content
+          updatedSections[sectionIndex] = {
+            ...updatedSections[sectionIndex],
+            content: aiResponse
+          };
+          
+          // Update the main content with the modified JD
+          onContentChange({
+            ...mainContent,
+            data: {
+              ...currentJDData,
+              sections: updatedSections
+            }
+          });
+          
+          // Create a response message showing the modification
+          const modificationMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: `I've updated the ${updatedSections[sectionIndex].title} section based on your feedback. Here's the new content:\n\n${aiResponse}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'jd-modification',
+            metadata: {
+              modifiedSection: targetSectionId,
+              originalContent
+            }
+          };
+          
+          // Replace the processing message with the modification message
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? modificationMessage : msg
+          ));
+        } else {
+          // Section not found, provide a general response
+          const responseMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: `I couldn't find a specific section to modify, but here's my suggestion for improving your job description:\n\n${aiResponse}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? responseMessage : msg
+          ));
+        }
+      } else {
+        // This is a full JD modification
+        // Parse the AI response to extract sections
+        const parsedJD = parseJobDescription(aiResponse);
+        
+        // Update the main content with the modified JD
+        onContentChange({
+          ...mainContent,
+          data: {
+            ...currentJDData,
+            ...parsedJD
+          }
+        });
+        
+        // Create a response message
+        const modificationMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          content: `I've updated the job description based on your feedback. The changes have been applied to the editor on the right.`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'jd-modification'
+        };
+        
+        // Replace the processing message with the modification message
+        setMessages(prev => prev.map(msg => 
+          msg.id === processingMessage.id ? modificationMessage : msg
+        ));
+      }
+    } catch (error) {
+      console.error('Error modifying JD:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: `I'm sorry, I encountered an error while trying to modify the job description. Please try again with more specific instructions.`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsModifyingJD(false);
     }
   };
 
@@ -359,6 +550,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     
     if (input.includes('upload') && input.includes('cv')) {
       return "I'll help you upload and analyze your CV. Please select the file you'd like to upload, and I'll extract key information like skills, experience, and qualifications to help match you with relevant nonprofit opportunities.";
+    } else if (input.includes('post a job') || input.includes('generate') && input.includes('job description')) {
+      return "Please share the link to your organizational website or the project this role supports. I'll use that to generate a mission-aligned JD.";
     } else if (input.includes('search') && input.includes('ai')) {
       return "I'll use AI to search for jobs that match your profile and preferences. I can analyze job descriptions, requirements, and company cultures to find the best opportunities for you.";
     } else if (input.includes('manual') && input.includes('search')) {
@@ -589,7 +782,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setIsRecording(!isRecording);
   };
 
-  const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
+  const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD && !isModifyingJD;
 
   const handleToolAction = (toolId: string, message: string) => {
     // Special handling for JD tool - immediately send assistant message
@@ -602,7 +795,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Set awaiting input state
       setAwaitingJDInput(true);
       
-      // Send the assistant message immediately
+      // Send the smart assistant message
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
         content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
@@ -618,8 +811,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return;
     }
     
-    // For other tools, populate input field but don't auto-send
+    // For other tools, use the existing logic
     setInput(message);
+    // Auto-send the message
+    setTimeout(() => handleSend(), 100);
   };
 
   const handleInactiveToolClick = (message: string) => {
@@ -761,18 +956,22 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           message.type === 'retry-option' ? 'border-l-4' : ''
                         } ${
                           message.type === 'ai-offline' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'jd-modification' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
                                          message.type === 'jd-request' ? '#E8F5E8' : 
                                          message.type === 'retry-option' ? '#FEF3CD' : 
-                                         message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
+                                         message.type === 'ai-offline' ? '#FEF2F2' :
+                                         message.type === 'jd-modification' ? '#E0F2F1' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
                                           message.type === 'jd-request' ? '#10B981' : 
                                           message.type === 'retry-option' ? '#F59E0B' : 
-                                          message.type === 'ai-offline' ? '#EF4444' : 'transparent'
+                                          message.type === 'ai-offline' ? '#EF4444' :
+                                          message.type === 'jd-modification' ? '#009688' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
@@ -820,6 +1019,16 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             </span>
                           </div>
                         )}
+
+                        {/* JD Modification indicators */}
+                        {message.type === 'jd-modification' && (
+                          <div className="flex items-center mt-2 space-x-2">
+                            <FileText className="w-3 h-3" style={{ color: '#009688' }} />
+                            <span className="text-xs font-medium" style={{ color: '#009688' }}>
+                              JD Updated
+                            </span>
+                          </div>
+                        )}
                       </motion.div>
                       
                       {/* Job Action Buttons */}
@@ -848,7 +1057,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
             {/* Typing Indicator */}
             <AnimatePresence>
-              {(isTyping || isProcessingJD) && (
+              {(isTyping || isProcessingJD || isModifyingJD) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -893,7 +1102,8 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            {isProcessingJD ? 'Generating job description...' : 'AI is thinking...'}
+                            {isProcessingJD ? 'Generating job description...' : 
+                             isModifyingJD ? 'Updating job description...' : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -939,13 +1149,19 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={
+                  currentJDData 
+                    ? "Ask me to modify or improve specific parts of the job description..." 
+                    : awaitingJDInput 
+                      ? "Paste a brief, upload a file, or share a job posting URL..." 
+                      : "Ask me anything about jobs, CVs, or matches..."
+                }
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
                   boxShadow: 'none'
                 }}
-                disabled={isTyping || isProcessingJD}
+                disabled={isTyping || isProcessingJD || isModifyingJD}
               />
 
               <motion.div
@@ -980,7 +1196,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                       onClick={handleFileUpload}
                       className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
                       style={{ color: '#66615C' }}
-                      disabled={isTyping || isProcessingJD}
+                      disabled={isTyping || isProcessingJD || isModifyingJD}
                     >
                       <Paperclip className="w-2.5 h-2.5" />
                     </Button>
@@ -996,7 +1212,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
-                    disabled={isTyping || isProcessingJD}
+                    disabled={isTyping || isProcessingJD || isModifyingJD}
                   />
                 )}
 
@@ -1011,7 +1227,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                         color: isRecording ? '#D5765B' : '#66615C',
                         backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
                       }}
-                      disabled={isTyping || isProcessingJD}
+                      disabled={isTyping || isProcessingJD || isModifyingJD}
                     >
                       {isRecording ? (
                         <Square className="w-2.5 h-2.5" />
@@ -1039,7 +1255,11 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Share your job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {currentJDData 
+                ? "Ask me to improve specific sections or the entire job description" 
+                : awaitingJDInput 
+                  ? 'Share your job details, upload file, or paste URL' 
+                  : 'Press Enter to send, Shift+Enter for new line'}
             </p>
           </div>
         </div>
