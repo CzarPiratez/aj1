@@ -170,7 +170,7 @@ export interface Job {
 export interface JDDraft {
   id: string;
   user_id: string;
-  input_type: string;
+  input_type: 'manual' | 'website'; // Updated to match database constraint
   raw_input: string;
   input_summary: string;
   content?: string;

@@ -203,7 +203,14 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
           console.log('✅ Website scraped successfully:', websiteContent.title);
         } catch (error) {
           console.error('❌ Website scraping failed:', error);
-          throw new Error(`Failed to access the website: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          // Continue with fallback content instead of throwing error
+          websiteContent = {
+            title: 'Job Posting',
+            description: '',
+            content: `Job posting from: ${parsedInput.url}`,
+            url: parsedInput.url!
+          };
+          console.log('⚠️ Using fallback website content');
         }
 
       } else if (parsedInput.type === 'briefWithLink') {
@@ -224,6 +231,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
         } catch (error) {
           console.warn('⚠️ Website scraping failed, continuing with brief only:', error);
           // Continue with just the brief if website scraping fails
+          websiteContent = null;
         }
 
       } else if (parsedInput.type === 'brief') {
@@ -258,17 +266,17 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       let savedDraft: JDDraft | null;
       
       if (websiteContent) {
-        // If we have website content, use it
+        // If we have website content, use it with 'website' type
         savedDraft = await processJDInput(
           profile.id, 
-          parsedInput.type === 'briefWithLink' ? 'brief' : 'link', 
+          'website', 
           websiteContent
         );
       } else {
-        // Otherwise use the text input
+        // Otherwise use the text input with 'manual' type
         savedDraft = await processJDInput(
           profile.id, 
-          'brief', 
+          'manual', 
           parsedInput.content
         );
       }
@@ -512,8 +520,8 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
 
           setMessages(prev => [...prev, processingMessage]);
 
-          // Process the file upload
-          const savedDraft = await processJDInput(profile.id, 'upload', file);
+          // Process the file upload using 'manual' type
+          const savedDraft = await processJDInput(profile.id, 'manual', file);
           if (!savedDraft) {
             throw new Error('Failed to save uploaded file');
           }

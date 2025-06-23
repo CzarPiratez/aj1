@@ -4,7 +4,7 @@ import { generateJobDescription as aiGenerateJobDescription } from './ai';
 import { scrapeWebsite, type WebsiteContent } from './jobBuilder';
 
 export interface JDInput {
-  type: 'brief' | 'upload' | 'link';
+  type: 'manual' | 'website';
   content: string;
   metadata?: {
     fileName?: string;
@@ -30,32 +30,18 @@ export interface JDDraft {
 }
 
 // Generate input summary for database storage
-function generateInputSummary(inputType: 'brief' | 'upload' | 'link', input: string | File | WebsiteContent): string {
-  if (inputType === 'upload' && input instanceof File) {
+function generateInputSummary(inputType: 'manual' | 'website', input: string | File | WebsiteContent): string {
+  if (inputType === 'manual' && input instanceof File) {
     return `File upload: ${input.name}`;
-  } else if (inputType === 'link' && typeof input === 'object' && 'url' in input) {
+  } else if (inputType === 'website' && typeof input === 'object' && 'url' in input) {
     const websiteContent = input as WebsiteContent;
     return `Website: ${websiteContent.title || extractDomain(websiteContent.url)}`;
-  } else if (inputType === 'brief' && typeof input === 'string') {
+  } else if (inputType === 'manual' && typeof input === 'string') {
     // Take first 100 characters of the brief as summary
     const brief = input.trim();
     return brief.length > 100 ? brief.substring(0, 97) + '...' : brief;
   } else {
     return 'Job description input';
-  }
-}
-
-// Map input type to database-compatible value
-function mapInputTypeForDatabase(inputType: 'brief' | 'upload' | 'link'): string {
-  // Based on the database constraint, only 'website' and 'manual' are allowed
-  switch (inputType) {
-    case 'link':
-      return 'website';
-    case 'brief':
-    case 'upload':
-      return 'manual';
-    default:
-      return 'manual';
   }
 }
 
@@ -140,7 +126,7 @@ export function validateBriefInput(brief: string): { isValid: boolean; reason?: 
 // Process JD input and save to database
 export async function processJDInput(
   userId: string,
-  inputType: 'brief' | 'upload' | 'link',
+  inputType: 'manual' | 'website',
   input: string | File | WebsiteContent
 ): Promise<JDDraft | null> {
   try {
@@ -150,7 +136,7 @@ export async function processJDInput(
     let fileType: string | undefined;
     let url: string | undefined;
 
-    if (inputType === 'upload' && input instanceof File) {
+    if (inputType === 'manual' && input instanceof File) {
       // Handle file upload
       fileName = input.name;
       fileType = input.name.split('.').pop()?.toLowerCase();
@@ -163,14 +149,14 @@ export async function processJDInput(
       // TODO: Implement actual file text extraction
       console.log('File upload processing not yet implemented');
       
-    } else if (inputType === 'link' && typeof input === 'object' && 'url' in input) {
+    } else if (inputType === 'website' && typeof input === 'object' && 'url' in input) {
       // Handle WebsiteContent input (already scraped)
       const websiteContent = input as WebsiteContent;
       url = websiteContent.url;
       rawInput = websiteContent.url;
       content = `${websiteContent.title}\n\n${websiteContent.description}\n\n${websiteContent.content}`;
       
-    } else if (inputType === 'brief' && typeof input === 'string') {
+    } else if (inputType === 'manual' && typeof input === 'string') {
       // Handle brief text input
       rawInput = input;
       content = input;
@@ -181,15 +167,12 @@ export async function processJDInput(
     // Generate input summary
     const inputSummary = generateInputSummary(inputType, input);
 
-    // Map input type to database-compatible value
-    const dbInputType = mapInputTypeForDatabase(inputType);
-
     // Save to database
     const { data, error } = await supabase
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: dbInputType, // Use mapped value instead of original inputType
+        input_type: inputType, // Use the inputType directly since it's already 'manual' or 'website'
         raw_input: rawInput,
         input_summary: inputSummary,
         content: content,
@@ -220,21 +203,18 @@ export async function processJDInput(
 // Create fallback draft when AI is rate limited
 export async function createFallbackDraft(
   userId: string,
-  inputType: 'brief' | 'upload' | 'link',
+  inputType: 'manual' | 'website',
   rawInput: string,
   inputSummary: string
 ): Promise<JDDraft | null> {
   try {
     console.log('🔄 Creating fallback draft due to AI rate limit');
     
-    // Map input type to database-compatible value
-    const dbInputType = mapInputTypeForDatabase(inputType);
-    
     const { data, error } = await supabase
       .from('jd_drafts')
       .insert({
         user_id: userId,
-        input_type: dbInputType, // Use mapped value instead of original inputType
+        input_type: inputType, // Use the inputType directly since it's already 'manual' or 'website'
         raw_input: rawInput,
         input_summary: inputSummary,
         content: rawInput,
