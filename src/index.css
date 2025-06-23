@@ -151,3 +151,16 @@ html, body, #root {
   padding: 0;
   max-width: none;
 }
+
+/* Custom toast styles for error and success */
+.my-error-toast {
+  background: #FEF2F2 !important;
+  border: 1px solid #FECACA !important;
+  color: #991B1B !important;
+}
+
+.my-success-toast {
+  background: #F0FDF4 !important;
+  border: 1px solid #BBF7D0 !important;
+  color: #166534 !important;
+}

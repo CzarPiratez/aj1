@@ -77,7 +77,7 @@ export function LandingPage() {
         
         // Verify user profile exists
         if (data.user) {
-          const { data: profile, error: profileError } = await supabase
+          const { error: profileError } = await supabase
             .from('users')
             .select('id')
             .eq('id', data.user.id)

@@ -21,7 +21,7 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     const fetchProfile = async () => {
       try {
         // Try to get existing profile
-        const { data: existingProfile, error: profileError } = await supabase
+        const { data: existingProfile } = await supabase
           .from('users')
           .select('*')
           .eq('id', user.id)

@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { BrowserRouter as Router } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { LandingPage } from '@/components/landing/LandingPage';
 import { AuthenticatedLayout } from '@/components/@authenticated/layout';
 import { Toaster } from 'sonner';
 import { toast } from 'sonner';
+import type { User } from '@supabase/supabase-js';
 import './App.css';
 
 function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
   const lastAuthEventRef = useRef<string | null>(null);
@@ -152,19 +153,9 @@ function App() {
               color: '#3A3936',
               fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             },
-            error: {
-              style: {
-                background: '#FEF2F2',
-                border: '1px solid #FECACA',
-                color: '#991B1B',
-              },
-            },
-            success: {
-              style: {
-                background: '#F0FDF4',
-                border: '1px solid #BBF7D0',
-                color: '#166534',
-              },
+            classNames: {
+              error: 'my-error-toast',
+              success: 'my-success-toast',
             },
           }}
         />
