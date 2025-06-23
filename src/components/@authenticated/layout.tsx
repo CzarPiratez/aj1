@@ -419,7 +419,11 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               transition={{ duration: 0.3 }}
               className="h-full"
             >
-              <ChatInterface onContentChange={handleContentChange} profile={profile} />
+              <ChatInterface 
+                onContentChange={handleContentChange} 
+                profile={profile} 
+                currentJDData={mainContent?.type === 'job-description' || mainContent?.type === 'job-description-manual' ? mainContent.data : null}
+              />
             </motion.div>
           </ResizablePanel>
 
