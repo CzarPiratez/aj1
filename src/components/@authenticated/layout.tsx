@@ -10,6 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { retryAIGeneration } from '@/lib/jobDescriptionService';
+import { parseJobDescription } from '@/lib/jobDescriptionParser';
 
 interface AuthenticatedLayoutProps {
   user: any;
@@ -162,16 +163,38 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     try {
       console.log('Saving job data:', jobData);
       
+      // Combine all sections into a comprehensive description
+      const fullDescription = `${jobData.title}\n\n${jobData.summary}\n\n${
+        jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n')
+      }`;
+      
+      // Add salary range if available
+      const descriptionWithSalary = jobData.salaryRange 
+        ? `${fullDescription}\n\nSalary Range: ${jobData.salaryRange}` 
+        : fullDescription;
+      
+      // Add how to apply if available
+      const completeDescription = jobData.howToApply
+        ? `${descriptionWithSalary}\n\nHow to Apply:\n${jobData.howToApply}`
+        : descriptionWithSalary;
+      
       // Map job data to database schema
       const jobRecord = {
         user_id: profile.id,
         title: jobData.title,
-        description: jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n'),
+        description: completeDescription,
         organization_name: jobData.organization,
         org_name: jobData.organization,
-        org_website: null, // Not available in the current UI
-        responsibilities: jobData.sections.find((s: any) => s.id === 'responsibilities')?.content || '',
-        qualifications: jobData.sections.find((s: any) => s.id === 'qualifications')?.content || '',
+        org_website: null, // Not directly available in the current UI
+        responsibilities: jobData.sections.find((s: any) => 
+          s.id === 'responsibilities' || 
+          s.title.toLowerCase().includes('responsibilities')
+        )?.content || '',
+        qualifications: jobData.sections.find((s: any) => 
+          s.id === 'qualifications' || 
+          s.title.toLowerCase().includes('qualifications') ||
+          s.title.toLowerCase().includes('experience')
+        )?.content || '',
         sdgs: jobData.sdgs,
         sector: jobData.sector[0], // Database expects a string, not an array
         contract_type: jobData.contractType,
@@ -238,16 +261,38 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     try {
       console.log('Publishing job data:', jobData);
       
+      // Combine all sections into a comprehensive description
+      const fullDescription = `${jobData.title}\n\n${jobData.summary}\n\n${
+        jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n')
+      }`;
+      
+      // Add salary range if available
+      const descriptionWithSalary = jobData.salaryRange 
+        ? `${fullDescription}\n\nSalary Range: ${jobData.salaryRange}` 
+        : fullDescription;
+      
+      // Add how to apply if available
+      const completeDescription = jobData.howToApply
+        ? `${descriptionWithSalary}\n\nHow to Apply:\n${jobData.howToApply}`
+        : descriptionWithSalary;
+      
       // Map job data to database schema
       const jobRecord = {
         user_id: profile.id,
         title: jobData.title,
-        description: jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n'),
+        description: completeDescription,
         organization_name: jobData.organization,
         org_name: jobData.organization,
-        org_website: null, // Not available in the current UI
-        responsibilities: jobData.sections.find((s: any) => s.id === 'responsibilities')?.content || '',
-        qualifications: jobData.sections.find((s: any) => s.id === 'qualifications')?.content || '',
+        org_website: null, // Not directly available in the current UI
+        responsibilities: jobData.sections.find((s: any) => 
+          s.id === 'responsibilities' || 
+          s.title.toLowerCase().includes('responsibilities')
+        )?.content || '',
+        qualifications: jobData.sections.find((s: any) => 
+          s.id === 'qualifications' || 
+          s.title.toLowerCase().includes('qualifications') ||
+          s.title.toLowerCase().includes('experience')
+        )?.content || '',
         sdgs: jobData.sdgs,
         sector: jobData.sector[0], // Database expects a string, not an array
         contract_type: jobData.contractType,
@@ -315,7 +360,6 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
       const generatedJD = await retryAIGeneration(mainContent.data.draftId);
       
       // Parse the generated JD into structured data
-      const { parseJobDescription } = await import('@/lib/jobDescriptionParser');
       const parsedJobData = parseJobDescription(generatedJD);
       
       // Update content to show successful generation
