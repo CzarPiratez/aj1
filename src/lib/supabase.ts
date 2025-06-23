@@ -139,6 +139,7 @@ export interface UserProgressFlags {
   has_started_jd: boolean;
   has_submitted_jd_inputs: boolean;
   has_generated_jd: boolean;
+  jd_generation_failed: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -162,6 +163,33 @@ export interface Job {
   application_end_date?: string;
   status: 'draft' | 'published' | 'archived';
   published_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JDDraft {
+  id: string;
+  user_id: string;
+  input_type: string;
+  raw_input: string;
+  input_summary: string;
+  content?: string;
+  website_url?: string;
+  role_title?: string;
+  sector?: string;
+  experience_years?: string;
+  required_skills?: string;
+  additional_details?: string;
+  generation_status: 'pending' | 'processing' | 'completed' | 'failed';
+  generated_jd?: string;
+  error_message?: string;
+  file_name?: string;
+  file_type?: string;
+  url?: string;
+  generated_draft?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  has_fallback?: boolean;
+  is_ai_generated?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -211,4 +239,13 @@ export interface ChatSession {
   updated_at: string;
   message_count: number;
   last_message_at?: string;
+}
+
+export interface ErrorLog {
+  id: string;
+  user_id?: string;
+  error_type: string;
+  details: string;
+  source: string;
+  created_at: string;
 }

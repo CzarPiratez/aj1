@@ -154,13 +154,149 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
   };
 
   const handleJobSave = async (jobData: any) => {
-    console.log('Saving job data:', jobData);
-    // TODO: Implement job saving logic
+    if (!profile?.id) {
+      toast.error('You must be logged in to save a job');
+      return;
+    }
+
+    try {
+      console.log('Saving job data:', jobData);
+      
+      // Map job data to database schema
+      const jobRecord = {
+        user_id: profile.id,
+        title: jobData.title,
+        description: jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n'),
+        organization_name: jobData.organization,
+        org_name: jobData.organization,
+        org_website: null, // Not available in the current UI
+        responsibilities: jobData.sections.find((s: any) => s.id === 'responsibilities')?.content || '',
+        qualifications: jobData.sections.find((s: any) => s.id === 'qualifications')?.content || '',
+        sdgs: jobData.sdgs,
+        sector: jobData.sector[0], // Database expects a string, not an array
+        contract_type: jobData.contractType,
+        location: jobData.location,
+        how_to_apply: jobData.howToApply || '',
+        application_end_date: jobData.applicationDeadline || null,
+        status: 'draft',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Check if we're updating an existing job or creating a new one
+      if (jobData.id) {
+        // Update existing job
+        const { error } = await supabase
+          .from('jobs')
+          .update({
+            ...jobRecord,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', jobData.id)
+          .eq('user_id', profile.id);
+
+        if (error) {
+          throw error;
+        }
+
+        toast.success('Job updated successfully!');
+      } else {
+        // Create new job
+        const { data, error } = await supabase
+          .from('jobs')
+          .insert(jobRecord)
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        // Update the job data with the new ID
+        setMainContent(prev => ({
+          ...prev,
+          data: {
+            ...prev.data,
+            id: data.id
+          }
+        }));
+
+        toast.success('Job saved as draft!');
+      }
+    } catch (error) {
+      console.error('Error saving job:', error);
+      toast.error('Failed to save job. Please try again.');
+    }
   };
 
   const handleJobPublish = async (jobData: any) => {
-    console.log('Publishing job data:', jobData);
-    // TODO: Implement job publishing logic
+    if (!profile?.id) {
+      toast.error('You must be logged in to publish a job');
+      return;
+    }
+
+    try {
+      console.log('Publishing job data:', jobData);
+      
+      // Map job data to database schema
+      const jobRecord = {
+        user_id: profile.id,
+        title: jobData.title,
+        description: jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n'),
+        organization_name: jobData.organization,
+        org_name: jobData.organization,
+        org_website: null, // Not available in the current UI
+        responsibilities: jobData.sections.find((s: any) => s.id === 'responsibilities')?.content || '',
+        qualifications: jobData.sections.find((s: any) => s.id === 'qualifications')?.content || '',
+        sdgs: jobData.sdgs,
+        sector: jobData.sector[0], // Database expects a string, not an array
+        contract_type: jobData.contractType,
+        location: jobData.location,
+        how_to_apply: jobData.howToApply || '',
+        application_end_date: jobData.applicationDeadline || null,
+        status: 'published',
+        published_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      // Check if we're updating an existing job or creating a new one
+      if (jobData.id) {
+        // Update existing job
+        const { error } = await supabase
+          .from('jobs')
+          .update({
+            ...jobRecord,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', jobData.id)
+          .eq('user_id', profile.id);
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        // Create new job
+        const { error } = await supabase
+          .from('jobs')
+          .insert(jobRecord);
+
+        if (error) {
+          throw error;
+        }
+      }
+
+      toast.success('Job published successfully!');
+      
+      // Update user progress
+      const { updateFlag } = await import('@/hooks/useUserProgress');
+      await updateFlag('has_published_job', true);
+      
+      // Navigate to jobs page
+      handleNavigate('jobs');
+    } catch (error) {
+      console.error('Error publishing job:', error);
+      toast.error('Failed to publish job. Please try again.');
+    }
   };
 
   // Handle AI fallback retry
