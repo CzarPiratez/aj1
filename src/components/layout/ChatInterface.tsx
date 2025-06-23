@@ -186,7 +186,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       let websiteContent: WebsiteContent | null = null;
 
       // Handle different input types
-      if (parsedInput.type === 'link') {
+      if (parsedInput.type === 'website') {
         // URL-only input - scrape the website
         processingMessage = {
           id: (Date.now() + 1).toString(),
@@ -203,7 +203,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
           console.log('✅ Website scraped successfully:', websiteContent.title);
         } catch (error) {
           console.error('❌ Website scraping failed:', error);
-          // Continue with fallback content instead of throwing error
+          // Create fallback content instead of throwing error
           websiteContent = {
             title: 'Job Posting',
             description: '',
@@ -213,8 +213,8 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
           console.log('⚠️ Using fallback website content');
         }
 
-      } else if (parsedInput.type === 'briefWithLink') {
-        // Brief + URL input - use both
+      } else if (parsedInput.type === 'manual' && parsedInput.url) {
+        // Manual input with URL - use both
         processingMessage = {
           id: (Date.now() + 1).toString(),
           content: `✨ Excellent! I have both your job brief and organization link.\n\n🔗 Analyzing: ${parsedInput.url}\n📝 Brief: "${parsedInput.content.substring(0, 100)}..."\n\nCreating a comprehensive job description that combines your requirements with the organization's mission...`,
@@ -227,15 +227,15 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
 
         try {
           websiteContent = await scrapeWebsite(parsedInput.url!);
-          console.log('✅ Website scraped successfully for brief+link:', websiteContent.title);
+          console.log('✅ Website scraped successfully for manual+link:', websiteContent.title);
         } catch (error) {
           console.warn('⚠️ Website scraping failed, continuing with brief only:', error);
           // Continue with just the brief if website scraping fails
           websiteContent = null;
         }
 
-      } else if (parsedInput.type === 'brief') {
-        // Brief-only input
+      } else if (parsedInput.type === 'manual') {
+        // Manual-only input
         processingMessage = {
           id: (Date.now() + 1).toString(),
           content: `✅ Great! I have all the details I need from your brief.\n\n📝 Brief: "${parsedInput.content.substring(0, 150)}..."\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,

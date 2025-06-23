@@ -1,7 +1,7 @@
 // JD Input Parser - Intelligently detect and process different types of job description inputs
 
 export interface ParsedJDInput {
-  type: 'brief' | 'link' | 'briefWithLink' | 'unknown';
+  type: 'manual' | 'website' | 'unknown';
   content: string;
   url?: string;
   confidence: number; // 0-1 confidence score
@@ -75,33 +75,33 @@ export function parseJDInput(input: string): ParsedJDInput {
     const textWithoutUrl = trimmedInput.replace(url, '').trim();
     
     if (isSubstantialBrief(textWithoutUrl)) {
-      // Input contains both a URL and substantial text - likely a brief with link
+      // Input contains both a URL and substantial text - treat as manual with URL reference
       return {
-        type: 'briefWithLink',
+        type: 'manual',
         content: textWithoutUrl,
         url,
         confidence: 0.9
       };
     } else {
-      // Input is primarily just a URL - likely a reference link
+      // Input is primarily just a URL - treat as website
       return {
-        type: 'link',
+        type: 'website',
         content: trimmedInput,
         url,
         confidence: 0.9
       };
     }
   } else if (isSubstantialBrief(trimmedInput)) {
-    // Input is substantial text without a URL - likely a brief
+    // Input is substantial text without a URL - manual type
     return {
-      type: 'brief',
+      type: 'manual',
       content: trimmedInput,
       confidence: 0.9
     };
   } else if (containsJobKeywords(trimmedInput)) {
-    // Input contains job keywords but isn't substantial - likely a brief but low confidence
+    // Input contains job keywords but isn't substantial - manual type but low confidence
     return {
-      type: 'brief',
+      type: 'manual',
       content: trimmedInput,
       confidence: 0.6
     };
@@ -119,7 +119,7 @@ export function parseJDInput(input: string): ParsedJDInput {
 export function getFollowUpQuestions(parsedInput: ParsedJDInput): string[] {
   const questions: string[] = [];
   
-  if (parsedInput.type === 'brief' || parsedInput.type === 'briefWithLink') {
+  if (parsedInput.type === 'manual') {
     const content = parsedInput.content.toLowerCase();
     
     // Check for missing key information
@@ -135,7 +135,7 @@ export function getFollowUpQuestions(parsedInput: ParsedJDInput): string[] {
       questions.push('What level of experience is required for this role?');
     }
     
-    if (!content.includes('organization') && !content.includes('company') && parsedInput.type !== 'briefWithLink') {
+    if (!content.includes('organization') && !content.includes('company') && !parsedInput.url) {
       questions.push('What organization is this role for?');
     }
     
