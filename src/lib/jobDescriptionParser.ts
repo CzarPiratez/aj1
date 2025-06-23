@@ -1,4 +1,4 @@
-// Job Description Parser - Convert AI-generated text to structured data
+// Enhanced Job Description Parser - Convert AI-generated text to structured data
 import { JobDescriptionData, JobSection } from '@/components/jd/JobDescriptionOutput';
 
 export interface ParsedJobDescription {
@@ -11,11 +11,34 @@ export interface ParsedJobDescription {
   location: string;
   contractType: string;
   applicationDeadline?: string;
+  salaryRange?: string;
+  howToApply?: string;
   clarityScore: number;
   readingLevel: string;
   deiScore: number;
   jargonWarnings: string[];
 }
+
+// Enhanced SDG mapping with full names and descriptions
+const SDG_MAPPING: Record<string, { name: string; description: string }> = {
+  'SDG 1': { name: 'No Poverty', description: 'End poverty in all its forms everywhere' },
+  'SDG 2': { name: 'Zero Hunger', description: 'End hunger, achieve food security and improved nutrition' },
+  'SDG 3': { name: 'Good Health and Well-being', description: 'Ensure healthy lives and promote well-being for all' },
+  'SDG 4': { name: 'Quality Education', description: 'Ensure inclusive and equitable quality education' },
+  'SDG 5': { name: 'Gender Equality', description: 'Achieve gender equality and empower all women and girls' },
+  'SDG 6': { name: 'Clean Water and Sanitation', description: 'Ensure availability and sustainable management of water' },
+  'SDG 7': { name: 'Affordable and Clean Energy', description: 'Ensure access to affordable, reliable, sustainable energy' },
+  'SDG 8': { name: 'Decent Work and Economic Growth', description: 'Promote sustained, inclusive economic growth and employment' },
+  'SDG 9': { name: 'Industry, Innovation and Infrastructure', description: 'Build resilient infrastructure and promote innovation' },
+  'SDG 10': { name: 'Reduced Inequalities', description: 'Reduce inequality within and among countries' },
+  'SDG 11': { name: 'Sustainable Cities and Communities', description: 'Make cities and human settlements inclusive and sustainable' },
+  'SDG 12': { name: 'Responsible Consumption and Production', description: 'Ensure sustainable consumption and production patterns' },
+  'SDG 13': { name: 'Climate Action', description: 'Take urgent action to combat climate change' },
+  'SDG 14': { name: 'Life Below Water', description: 'Conserve and sustainably use the oceans and marine resources' },
+  'SDG 15': { name: 'Life on Land', description: 'Protect, restore and promote sustainable use of terrestrial ecosystems' },
+  'SDG 16': { name: 'Peace, Justice and Strong Institutions', description: 'Promote peaceful and inclusive societies' },
+  'SDG 17': { name: 'Partnerships for the Goals', description: 'Strengthen the means of implementation and revitalize partnerships' }
+};
 
 // Extract job title from AI-generated content
 function extractJobTitle(content: string): string {
@@ -33,7 +56,7 @@ function extractJobTitle(content: string): string {
     for (const pattern of titlePatterns) {
       const match = line.match(pattern);
       if (match) {
-        return match[1].trim();
+        return match[1].trim().replace(/[#*]/g, '');
       }
     }
   }
@@ -58,61 +81,73 @@ function extractJobSummary(content: string): string {
     const header = lines[0]?.toLowerCase() || '';
     
     if (summaryPatterns.some(pattern => pattern.test(header))) {
-      return lines.slice(1).join('\n').trim();
+      return lines.slice(1).join('\n').trim().replace(/[#*]/g, '');
     }
   }
   
   // Fallback: use first paragraph after title
   const paragraphs = content.split(/\n\s*\n/).filter(p => p.trim());
-  return paragraphs[1]?.replace(/^#+\s*[^\n]*\n/, '').trim() || 'Mission-driven opportunity to create positive impact.';
+  return paragraphs[1]?.replace(/^#+\s*[^\n]*\n/, '').trim().replace(/[#*]/g, '') || 'Mission-driven opportunity to create positive impact.';
 }
 
-// Extract sectors from content
+// Enhanced sector extraction with more comprehensive mapping
 function extractSectors(content: string): string[] {
   const sectorKeywords = {
-    'Health': ['health', 'medical', 'healthcare', 'clinical', 'hospital', 'clinic'],
-    'Education': ['education', 'school', 'teaching', 'learning', 'academic', 'university'],
-    'Environment': ['environment', 'climate', 'sustainability', 'conservation', 'green', 'renewable'],
-    'Human Rights': ['human rights', 'justice', 'advocacy', 'legal', 'protection', 'equality'],
-    'Humanitarian': ['humanitarian', 'emergency', 'disaster', 'relief', 'crisis', 'refugee'],
-    'Development': ['development', 'poverty', 'economic', 'community', 'rural', 'urban'],
-    'Gender': ['gender', 'women', 'equality', 'empowerment', 'inclusion', 'diversity'],
-    'Livelihoods': ['livelihood', 'employment', 'income', 'economic', 'entrepreneurship', 'skills'],
+    'Health': ['health', 'medical', 'healthcare', 'clinical', 'hospital', 'clinic', 'wellness', 'nutrition', 'mental health'],
+    'Education': ['education', 'school', 'teaching', 'learning', 'academic', 'university', 'literacy', 'training'],
+    'Environment': ['environment', 'climate', 'sustainability', 'conservation', 'green', 'renewable', 'biodiversity', 'ecosystem'],
+    'Human Rights': ['human rights', 'justice', 'advocacy', 'legal', 'protection', 'equality', 'freedom', 'democracy'],
+    'Humanitarian': ['humanitarian', 'emergency', 'disaster', 'relief', 'crisis', 'refugee', 'displacement', 'conflict'],
+    'Development': ['development', 'poverty', 'economic', 'community', 'rural', 'urban', 'infrastructure', 'capacity building'],
+    'Gender': ['gender', 'women', 'equality', 'empowerment', 'inclusion', 'diversity', 'feminism', 'girls'],
+    'Livelihoods': ['livelihood', 'employment', 'income', 'economic', 'entrepreneurship', 'skills', 'microfinance', 'agriculture'],
+    'Water & Sanitation': ['water', 'sanitation', 'hygiene', 'wash', 'clean water', 'sewage', 'drainage'],
+    'Food Security': ['food', 'nutrition', 'hunger', 'agriculture', 'farming', 'crops', 'livestock', 'malnutrition'],
+    'Child Protection': ['child', 'children', 'youth', 'protection', 'safeguarding', 'abuse', 'exploitation'],
+    'Governance': ['governance', 'democracy', 'transparency', 'accountability', 'policy', 'government', 'civic']
   };
   
   const contentLower = content.toLowerCase();
   const foundSectors: string[] = [];
   
   for (const [sector, keywords] of Object.entries(sectorKeywords)) {
-    if (keywords.some(keyword => contentLower.includes(keyword))) {
+    const keywordCount = keywords.filter(keyword => contentLower.includes(keyword)).length;
+    if (keywordCount >= 1) {
       foundSectors.push(sector);
     }
   }
   
-  return foundSectors.length > 0 ? foundSectors : ['Development'];
+  return foundSectors.length > 0 ? foundSectors.slice(0, 3) : ['Development'];
 }
 
-// Extract SDGs from content
+// Enhanced SDG extraction with better keyword mapping
 function extractSDGs(content: string): string[] {
   const sdgKeywords = {
-    'SDG 1': ['poverty', 'poor', 'income', 'economic'],
-    'SDG 2': ['hunger', 'food', 'nutrition', 'agriculture'],
-    'SDG 3': ['health', 'medical', 'healthcare', 'wellbeing'],
-    'SDG 4': ['education', 'learning', 'school', 'training'],
-    'SDG 5': ['gender', 'women', 'equality', 'empowerment'],
-    'SDG 6': ['water', 'sanitation', 'hygiene', 'wash'],
-    'SDG 8': ['employment', 'work', 'economic', 'growth'],
-    'SDG 10': ['inequality', 'inclusion', 'discrimination'],
-    'SDG 13': ['climate', 'environment', 'carbon', 'emissions'],
-    'SDG 16': ['peace', 'justice', 'governance', 'institutions'],
-    'SDG 17': ['partnership', 'cooperation', 'collaboration'],
+    'SDG 1': ['poverty', 'poor', 'income', 'economic empowerment', 'livelihood', 'basic needs'],
+    'SDG 2': ['hunger', 'food', 'nutrition', 'agriculture', 'farming', 'malnutrition', 'food security'],
+    'SDG 3': ['health', 'medical', 'healthcare', 'wellbeing', 'disease', 'mental health', 'wellness'],
+    'SDG 4': ['education', 'learning', 'school', 'training', 'literacy', 'skills', 'knowledge'],
+    'SDG 5': ['gender', 'women', 'equality', 'empowerment', 'girls', 'feminism', 'discrimination'],
+    'SDG 6': ['water', 'sanitation', 'hygiene', 'wash', 'clean water', 'sewage'],
+    'SDG 7': ['energy', 'electricity', 'renewable', 'solar', 'wind', 'power', 'fuel'],
+    'SDG 8': ['employment', 'work', 'economic', 'growth', 'jobs', 'decent work', 'labor'],
+    'SDG 9': ['infrastructure', 'innovation', 'technology', 'industry', 'research', 'development'],
+    'SDG 10': ['inequality', 'inclusion', 'discrimination', 'marginalized', 'vulnerable', 'equity'],
+    'SDG 11': ['cities', 'urban', 'communities', 'housing', 'transport', 'sustainable cities'],
+    'SDG 12': ['consumption', 'production', 'waste', 'recycling', 'sustainable', 'circular economy'],
+    'SDG 13': ['climate', 'environment', 'carbon', 'emissions', 'global warming', 'adaptation'],
+    'SDG 14': ['ocean', 'marine', 'sea', 'fishing', 'coastal', 'aquatic'],
+    'SDG 15': ['forest', 'biodiversity', 'ecosystem', 'wildlife', 'conservation', 'land'],
+    'SDG 16': ['peace', 'justice', 'governance', 'institutions', 'rule of law', 'transparency'],
+    'SDG 17': ['partnership', 'cooperation', 'collaboration', 'global', 'alliance', 'network']
   };
   
   const contentLower = content.toLowerCase();
   const foundSDGs: string[] = [];
   
   for (const [sdg, keywords] of Object.entries(sdgKeywords)) {
-    if (keywords.some(keyword => contentLower.includes(keyword))) {
+    const keywordCount = keywords.filter(keyword => contentLower.includes(keyword)).length;
+    if (keywordCount >= 1) {
       foundSDGs.push(sdg);
     }
   }
@@ -120,16 +155,17 @@ function extractSDGs(content: string): string[] {
   return foundSDGs.length > 0 ? foundSDGs.slice(0, 3) : ['SDG 8'];
 }
 
-// Parse content into sections
+// Enhanced section parsing with better pattern recognition
 function extractSections(content: string): JobSection[] {
   const sectionPatterns = [
     { id: 'overview', title: 'Role Overview', patterns: [/(?:role|position|job)\s+(?:overview|summary|description)/i, /about\s+(?:the\s+)?(?:role|position)/i] },
-    { id: 'responsibilities', title: 'Key Responsibilities', patterns: [/(?:key\s+)?responsibilities/i, /duties/i, /what\s+you.ll\s+do/i] },
-    { id: 'qualifications', title: 'Qualifications & Experience', patterns: [/qualifications/i, /requirements/i, /experience/i, /what\s+we.re\s+looking/i] },
-    { id: 'competencies', title: 'Competencies', patterns: [/competencies/i, /skills/i, /abilities/i] },
-    { id: 'conditions', title: 'Working Conditions', patterns: [/working\s+conditions/i, /work\s+environment/i, /location/i] },
-    { id: 'application', title: 'Application Process', patterns: [/how\s+to\s+apply/i, /application/i, /apply/i, /contact/i] },
-    { id: 'organization', title: 'About the Organization', patterns: [/about\s+(?:us|the\s+organization|our\s+organization)/i, /organization/i, /company/i] },
+    { id: 'responsibilities', title: 'Key Responsibilities', patterns: [/(?:key\s+)?responsibilities/i, /duties/i, /what\s+you.ll\s+do/i, /main\s+tasks/i] },
+    { id: 'qualifications', title: 'Qualifications & Experience', patterns: [/qualifications/i, /requirements/i, /experience/i, /what\s+we.re\s+looking/i, /essential\s+criteria/i] },
+    { id: 'competencies', title: 'Competencies', patterns: [/competencies/i, /skills/i, /abilities/i, /capabilities/i] },
+    { id: 'offer', title: 'What We Offer', patterns: [/what\s+we\s+offer/i, /benefits/i, /package/i, /compensation/i] },
+    { id: 'conditions', title: 'Working Conditions', patterns: [/working\s+conditions/i, /work\s+environment/i, /location/i, /contract/i] },
+    { id: 'application', title: 'Application Process', patterns: [/how\s+to\s+apply/i, /application/i, /apply/i, /contact/i, /submit/i] },
+    { id: 'organization', title: 'About the Organization', patterns: [/about\s+(?:us|the\s+organization|our\s+organization)/i, /organization/i, /company/i, /who\s+we\s+are/i] },
   ];
   
   const sections: JobSection[] = [];
@@ -140,7 +176,7 @@ function extractSections(content: string): JobSection[] {
     
     const lines = section.split('\n');
     const header = lines[0]?.trim() || '';
-    const content = lines.slice(1).join('\n').trim();
+    const content = lines.slice(1).join('\n').trim().replace(/[#*]/g, '');
     
     if (!content) continue;
     
@@ -187,13 +223,14 @@ function extractSections(content: string): JobSection[] {
   return sections;
 }
 
-// Extract organization info
+// Enhanced organization extraction
 function extractOrganization(content: string): string {
   const orgPatterns = [
     /organization:\s*(.+)/i,
     /company:\s*(.+)/i,
     /about\s+us[:\s]+(.+)/i,
     /we\s+are\s+(.+?)(?:\.|,|\n)/i,
+    /(?:join|work\s+with)\s+(.+?)(?:\.|,|\n)/i,
   ];
   
   for (const pattern of orgPatterns) {
@@ -206,12 +243,13 @@ function extractOrganization(content: string): string {
   return 'Mission-driven Organization';
 }
 
-// Extract location
+// Enhanced location extraction
 function extractLocation(content: string): string {
   const locationPatterns = [
     /location:\s*(.+)/i,
     /based\s+in\s+(.+?)(?:\.|,|\n)/i,
     /(?:remote|hybrid|on-site)/i,
+    /(?:country|region|city):\s*(.+)/i,
   ];
   
   for (const pattern of locationPatterns) {
@@ -224,7 +262,7 @@ function extractLocation(content: string): string {
   return 'Remote/Flexible';
 }
 
-// Extract contract type
+// Enhanced contract type extraction
 function extractContractType(content: string): string {
   const contractPatterns = [
     /full.?time/i,
@@ -234,6 +272,7 @@ function extractContractType(content: string): string {
     /volunteer/i,
     /temporary/i,
     /permanent/i,
+    /fixed.?term/i,
   ];
   
   for (const pattern of contractPatterns) {
@@ -249,7 +288,65 @@ function extractContractType(content: string): string {
   return 'Full-Time';
 }
 
-// Calculate clarity score
+// Extract application deadline
+function extractApplicationDeadline(content: string): string | undefined {
+  const deadlinePatterns = [
+    /deadline:\s*(.+)/i,
+    /apply\s+by\s+(.+?)(?:\.|,|\n)/i,
+    /closing\s+date:\s*(.+)/i,
+    /applications\s+close\s+(.+?)(?:\.|,|\n)/i,
+  ];
+  
+  for (const pattern of deadlinePatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      return match[1].trim().split(/[.\n]/)[0];
+    }
+  }
+  
+  return undefined;
+}
+
+// Extract salary range
+function extractSalaryRange(content: string): string | undefined {
+  const salaryPatterns = [
+    /salary:\s*(.+)/i,
+    /compensation:\s*(.+)/i,
+    /\$[\d,]+\s*-\s*\$[\d,]+/i,
+    /€[\d,]+\s*-\s*€[\d,]+/i,
+    /£[\d,]+\s*-\s*£[\d,]+/i,
+    /competitive\s+salary/i,
+  ];
+  
+  for (const pattern of salaryPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      return match[1]?.trim().split(/[.\n]/)[0] || match[0];
+    }
+  }
+  
+  return undefined;
+}
+
+// Extract how to apply instructions
+function extractHowToApply(content: string): string | undefined {
+  const applyPatterns = [
+    /how\s+to\s+apply[:\s]+(.*?)(?:\n\n|\n#|$)/is,
+    /application\s+process[:\s]+(.*?)(?:\n\n|\n#|$)/is,
+    /to\s+apply[:\s]+(.*?)(?:\n\n|\n#|$)/is,
+  ];
+  
+  for (const pattern of applyPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      return match[1].trim().replace(/[#*]/g, '');
+    }
+  }
+  
+  return undefined;
+}
+
+// Enhanced clarity score calculation
 function calculateClarityScore(content: string): number {
   const sentences = content.split(/[.!?]+/).filter(s => s.trim());
   const words = content.split(/\s+/).filter(w => w.trim());
@@ -270,10 +367,14 @@ function calculateClarityScore(content: string): number {
   const hasHeaders = /^#+\s|\*\*[^*]+\*\*/.test(content);
   if (hasHeaders) score += 10;
   
+  // Reward bullet points
+  const hasBullets = /^[-•*]\s/m.test(content);
+  if (hasBullets) score += 5;
+  
   return Math.max(60, Math.min(100, score));
 }
 
-// Determine reading level
+// Enhanced reading level determination
 function determineReadingLevel(content: string): string {
   const sentences = content.split(/[.!?]+/).filter(s => s.trim());
   const words = content.split(/\s+/).filter(w => w.trim());
@@ -293,18 +394,18 @@ function determineReadingLevel(content: string): string {
   return 'Graduate';
 }
 
-// Calculate DEI score
+// Enhanced DEI score calculation
 function calculateDEIScore(content: string): number {
   let score = 100;
   const contentLower = content.toLowerCase();
   
   // Check for gendered language
-  const genderedTerms = ['guys', 'manpower', 'chairman', 'policeman', 'fireman'];
+  const genderedTerms = ['guys', 'manpower', 'chairman', 'policeman', 'fireman', 'mankind'];
   const foundGendered = genderedTerms.filter(term => contentLower.includes(term));
   score -= foundGendered.length * 10;
   
   // Check for inclusive language
-  const inclusiveTerms = ['diverse', 'inclusive', 'equal opportunity', 'all backgrounds', 'everyone'];
+  const inclusiveTerms = ['diverse', 'inclusive', 'equal opportunity', 'all backgrounds', 'everyone', 'accessibility', 'accommodation'];
   const foundInclusive = inclusiveTerms.filter(term => contentLower.includes(term));
   score += foundInclusive.length * 5;
   
@@ -313,10 +414,15 @@ function calculateDEIScore(content: string): number {
     score += 10;
   }
   
+  // Check for bias-free language
+  const biasTerms = ['native speaker', 'cultural fit', 'young', 'energetic', 'digital native'];
+  const foundBias = biasTerms.filter(term => contentLower.includes(term));
+  score -= foundBias.length * 8;
+  
   return Math.max(60, Math.min(100, score));
 }
 
-// Identify jargon warnings
+// Enhanced jargon identification
 function identifyJargonWarnings(content: string): string[] {
   const jargonTerms = [
     { term: 'synergize', suggestion: 'work together' },
@@ -326,6 +432,11 @@ function identifyJargonWarnings(content: string): string[] {
     { term: 'operationalize', suggestion: 'implement' },
     { term: 'stakeholder', suggestion: 'partner or community member' },
     { term: 'deliverables', suggestion: 'results or outputs' },
+    { term: 'bandwidth', suggestion: 'capacity or time' },
+    { term: 'circle back', suggestion: 'follow up' },
+    { term: 'deep dive', suggestion: 'detailed analysis' },
+    { term: 'low-hanging fruit', suggestion: 'easy wins' },
+    { term: 'move the needle', suggestion: 'make progress' },
   ];
   
   const warnings: string[] = [];
@@ -340,7 +451,7 @@ function identifyJargonWarnings(content: string): string[] {
   return warnings;
 }
 
-// Main parsing function
+// Main parsing function with enhanced capabilities
 export function parseJobDescription(aiGeneratedContent: string): ParsedJobDescription {
   const title = extractJobTitle(aiGeneratedContent);
   const summary = extractJobSummary(aiGeneratedContent);
@@ -350,6 +461,9 @@ export function parseJobDescription(aiGeneratedContent: string): ParsedJobDescri
   const organization = extractOrganization(aiGeneratedContent);
   const location = extractLocation(aiGeneratedContent);
   const contractType = extractContractType(aiGeneratedContent);
+  const applicationDeadline = extractApplicationDeadline(aiGeneratedContent);
+  const salaryRange = extractSalaryRange(aiGeneratedContent);
+  const howToApply = extractHowToApply(aiGeneratedContent);
   const clarityScore = calculateClarityScore(aiGeneratedContent);
   const readingLevel = determineReadingLevel(aiGeneratedContent);
   const deiScore = calculateDEIScore(aiGeneratedContent);
@@ -364,9 +478,17 @@ export function parseJobDescription(aiGeneratedContent: string): ParsedJobDescri
     organization,
     location,
     contractType,
+    applicationDeadline,
+    salaryRange,
+    howToApply,
     clarityScore,
     readingLevel,
     deiScore,
     jargonWarnings,
   };
+}
+
+// Helper function to get SDG information
+export function getSDGInfo(sdgCode: string): { name: string; description: string } | null {
+  return SDG_MAPPING[sdgCode] || null;
 }

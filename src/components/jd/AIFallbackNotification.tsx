@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, RefreshCw, Edit3, Brain } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -97,7 +97,6 @@ export function AIFallbackNotification({
                     backgroundColor: '#FFFFFF'
                   }}
                 >
-                  <Edit3 className="w-3 h-3 mr-2" />
                   Continue Manually
                 </Button>
               </div>

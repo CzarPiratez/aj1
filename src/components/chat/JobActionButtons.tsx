@@ -1,13 +1,21 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Edit, Eye, Send, Sparkles } from 'lucide-react';
+import { Edit, Eye, Send, Sparkles, Download, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface JobActionButtonsProps {
   onEdit: () => void;
   onPreview: () => void;
   onPublish: () => void;
+  onDownload?: () => void;
+  onShare?: () => void;
   isPublishing?: boolean;
 }
 
@@ -15,6 +23,8 @@ export function JobActionButtons({
   onEdit, 
   onPreview, 
   onPublish, 
+  onDownload,
+  onShare,
   isPublishing = false 
 }: JobActionButtonsProps) {
   return (
@@ -71,6 +81,54 @@ export function JobActionButtons({
               <Eye className="w-3 h-3 mr-2" />
               Preview
             </Button>
+            
+            {onDownload && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 rounded-lg font-light text-xs border hover:shadow-sm transition-all duration-200"
+                    style={{ 
+                      borderColor: '#D8D5D2',
+                      color: '#3A3936',
+                      backgroundColor: '#FFFFFF'
+                    }}
+                  >
+                    <Download className="w-3 h-3 mr-2" />
+                    Download
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={onDownload}>
+                    Text (.txt)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onDownload}>
+                    PDF (.pdf)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onDownload}>
+                    Word (.docx)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
+            {onShare && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onShare}
+                className="h-8 px-3 rounded-lg font-light text-xs border hover:shadow-sm transition-all duration-200"
+                style={{ 
+                  borderColor: '#D8D5D2',
+                  color: '#3A3936',
+                  backgroundColor: '#FFFFFF'
+                }}
+              >
+                <Share2 className="w-3 h-3 mr-2" />
+                Share
+              </Button>
+            )}
             
             <Button
               size="sm"

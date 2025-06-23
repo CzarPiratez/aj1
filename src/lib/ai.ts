@@ -317,50 +317,74 @@ export async function callAI(
   return await callOpenRouter(messages, options);
 }
 
-// Specialized AI functions for different AidJobs tools
-
-// 1. Job Description Generation
+// Enhanced Job Description Generation with "Super Wow" prompting
 export async function generateJobDescription(websiteContent: {
   title: string;
   description: string;
   content: string;
   url: string;
 }): Promise<string> {
-  const systemPrompt = `You are an AI job description expert for the nonprofit and development sector. Use the organization's website or project page to understand their mission, work, and context. Then generate a rich, mission-aligned job description for a role that fits within their goals.
+  const systemPrompt = `You are an elite AI job description expert specializing in the nonprofit and development sector. Your task is to create extraordinary, mission-aligned job descriptions that surpass UN and top INGO standards.
 
-Create a comprehensive job description that includes:
-- Clear job title (based on inferred needs)
-- Mission-aligned summary that connects to the organization's purpose
-- Detailed responsibilities that are purpose-driven and specific
-- Skills & qualifications (realistic but thoughtful)
-- DEI-friendly language throughout
-- Suggested salary range (based on region or similar benchmarks)
-- SDG relevance if identifiable
-- Clear application instructions
+CRITICAL REQUIREMENTS:
+1. STRUCTURE: Use clear markdown headings (# for main sections, ## for subsections) and bullet points for lists
+2. CONTENT QUALITY: Create content that is comprehensive, engaging, and professionally exceptional
+3. SDG INTEGRATION: Identify and integrate 2-3 most relevant Sustainable Development Goals with clear justification
+4. SECTOR ALIGNMENT: Specify the primary sector/impact area with reasoning
+5. DEI LANGUAGE: Use inclusive, accessible language that avoids jargon and bias
+6. SALARY & CONTRACT: Include realistic salary guidance and clear contract details
+7. READING LEVEL: Aim for college-level readability while remaining accessible
+8. NO RAW SYMBOLS: Avoid using ** or -- symbols; use proper markdown structure instead
 
-Make it professional, engaging, and unique to this organization. Use warm, professional, inviting tone that attracts mission-driven candidates.`;
+REQUIRED SECTIONS:
+# [Job Title]
+## Role Overview
+## Key Responsibilities  
+## Qualifications & Experience
+## What We Offer
+## Application Process
+## About the Organization
 
-  const userPrompt = `Based on this organization's website content, please generate a comprehensive job description:
+ADDITIONAL ELEMENTS TO INCLUDE:
+- Location and contract type
+- Application deadline (suggest realistic timeframe)
+- Salary range (if appropriate for role/region)
+- SDG relevance with brief explanation
+- Sector classification with reasoning
+- Clear "How to Apply" instructions
+
+TONE: Professional yet warm, mission-driven, inspiring, and inclusive. Write as if for the world's most prestigious nonprofit recruitment.`;
+
+  const userPrompt = `Based on this organization's information, create an exceptional job description that would attract top-tier nonprofit talent:
 
 Organization: ${websiteContent.title}
 Website: ${websiteContent.url}
 Description: ${websiteContent.description}
 Content: ${websiteContent.content}
 
-Please create a job description that aligns with their mission and work.`;
+Create a job description that:
+1. Reflects the organization's mission and values
+2. Includes specific, actionable responsibilities
+3. Sets realistic but inspiring qualifications
+4. Incorporates relevant SDGs with justification
+5. Specifies the sector and impact area
+6. Uses inclusive, jargon-free language
+7. Provides comprehensive application guidance
+
+Make this a job description that would be worthy of the most prestigious international organizations.`;
 
   const response = await callAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
   ], { 
     temperature: 0.8, 
-    max_tokens: 3000 
+    max_tokens: 4000 
   });
 
   return response.content;
 }
 
-// 2. CV Analysis
+// CV Analysis
 export async function analyzeCVContent(cvText: string): Promise<string> {
   const systemPrompt = `You are an AI CV analysis expert specializing in nonprofit and development sector careers. Analyze the provided CV and provide comprehensive insights including:
 
@@ -388,7 +412,7 @@ ${cvText}`;
   return response.content;
 }
 
-// 3. Cover Letter Generation
+// Cover Letter Generation
 export async function generateCoverLetter(
   cvSummary: string,
   jobDescription: string,
@@ -427,7 +451,7 @@ ${organizationInfo}`;
   return response.content;
 }
 
-// 4. Job Matching Analysis
+// Job Matching Analysis
 export async function analyzeJobMatch(
   candidateProfile: string,
   jobDescription: string
@@ -492,7 +516,7 @@ GAPS: [bullet points]`;
   };
 }
 
-// 5. Skill Gap Analysis
+// Skill Gap Analysis
 export async function analyzeSkillGaps(
   currentSkills: string,
   targetRole: string
@@ -527,7 +551,7 @@ ${targetRole}`;
   return response.content;
 }
 
-// 6. Organization Profile Generation
+// Organization Profile Generation
 export async function generateOrganizationProfile(
   organizationInfo: string,
   websiteContent?: string
@@ -562,7 +586,7 @@ ${websiteContent ? `WEBSITE CONTENT:\n${websiteContent}` : ''}`;
   return response.content;
 }
 
-// 7. Content Refinement
+// Content Refinement
 export async function refineContent(
   content: string,
   contentType: 'cv' | 'cover-letter' | 'job-description' | 'organization-profile',
@@ -594,7 +618,7 @@ ${content}`;
   return response.content;
 }
 
-// 8. Alternative Career Paths
+// Alternative Career Paths
 export async function suggestAlternativePaths(
   candidateBackground: string,
   currentInterests: string
@@ -629,13 +653,14 @@ ${currentInterests}`;
   return response.content;
 }
 
-// 9. General AI Chat Assistant
+// Enhanced General AI Chat Assistant with JD modification capabilities
 export async function generateChatResponse(
   userMessage: string,
   conversationContext: string = '',
-  userProfile?: any
+  userProfile?: any,
+  currentJDData?: any
 ): Promise<string> {
-  const systemPrompt = `You are an AI assistant for AidJobs, a nonprofit recruitment platform. You help with:
+  let systemPrompt = `You are an AI assistant for AidJobs, a nonprofit recruitment platform. You help with:
 
 - Job searching and career advice
 - CV and cover letter assistance
@@ -647,6 +672,18 @@ export async function generateChatResponse(
 Be helpful, knowledgeable, and encouraging. Focus on nonprofit and development sector expertise. Keep responses concise but comprehensive.
 
 ${userProfile ? `User context: ${JSON.stringify(userProfile)}` : ''}`;
+
+  // If current JD data is provided, add JD modification capabilities
+  if (currentJDData) {
+    systemPrompt += `
+
+IMPORTANT: The user has a job description currently being edited. You can help modify specific sections based on their requests. When they ask for changes to the JD (like "make the responsibilities more concise" or "add project management to qualifications"), provide the updated content for that specific section.
+
+Current JD Data:
+Title: ${currentJDData.title}
+Summary: ${currentJDData.summary}
+Sections: ${currentJDData.sections?.map((s: any) => `${s.title}: ${s.content}`).join('\n')}`;
+  }
 
   const messages: AIMessage[] = [
     { role: 'system', content: systemPrompt }
