@@ -22,6 +22,16 @@ import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
 import { parseJobDescription } from '@/lib/jobDescriptionParser';
+import { 
+  processJDInput, 
+  generateJDFromInput, 
+  validateBriefInput,
+  isValidUrl,
+  extractDomain,
+  createFallbackDraft
+} from '@/lib/jobDescriptionService';
+import { parseJDInput } from '@/lib/jdInputParser';
+import { scrapeWebsite } from '@/lib/jobBuilder';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -168,46 +178,90 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Update progress flag
       await updateFlag('has_submitted_jd_inputs', true);
 
-      // Show processing message
-      const processingMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Perfect! I'm working on your job description now...\n\nI'll create a comprehensive, professional job description that's mission-aligned and inclusive...`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
+      // Parse the input to determine type
+      const parsedInput = parseJDInput(userInput);
+      console.log('📝 Parsed input:', parsedInput);
 
-      setMessages(prev => [...prev, processingMessage]);
+      let processingMessage: Message;
+      let savedDraft: any = null;
 
-      // Simulate JD generation (replace with actual implementation)
-      setTimeout(async () => {
-        // Mock generated JD
-        const generatedJD = `# Program Coordinator - Community Development
+      if (parsedInput.type === 'link' || parsedInput.type === 'briefWithLink') {
+        // Handle URL input
+        const url = parsedInput.url!;
+        
+        processingMessage = {
+          id: (Date.now() + 1).toString(),
+          content: `🔗 Perfect! I'm fetching the job posting from: ${extractDomain(url)}\n\nI'll analyze it and create an improved version with better clarity, DEI language, and nonprofit alignment...`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
 
-## Role Overview
-We are seeking a passionate Program Coordinator to join our community development team. This role offers an exciting opportunity to make a direct impact on local communities while working with a mission-driven organization committed to sustainable development.
+        setMessages(prev => [...prev, processingMessage]);
 
-## Key Responsibilities
-- Coordinate and implement community development programs
-- Build relationships with local stakeholders and partners
-- Monitor and evaluate program effectiveness
-- Prepare reports and documentation
-- Support capacity building initiatives
+        try {
+          // Scrape website content
+          const websiteContent = await scrapeWebsite(url);
+          
+          // Process as website input
+          savedDraft = await processJDInput(profile.id, 'link', websiteContent);
+        } catch (scrapeError) {
+          console.error('Error scraping website:', scrapeError);
+          throw new Error(`Failed to fetch content from ${extractDomain(url)}. Please check the URL or try a different approach.`);
+        }
+      } else if (parsedInput.type === 'brief') {
+        // Handle brief text input
+        const validation = validateBriefInput(userInput);
+        
+        if (!validation.isValid) {
+          // Ask for more information
+          const clarificationMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: `${validation.reason}\n\nFor example: "We need a field coordinator for a migration project in Kenya. Looking for someone with 3+ years experience in humanitarian response, M&E, and team management."`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'jd-request'
+          };
 
-## Qualifications & Experience
-- Bachelor's degree in Development Studies, Social Sciences, or related field
-- 2-3 years of experience in community development or nonprofit sector
-- Strong communication and interpersonal skills
-- Experience with project management and monitoring & evaluation
-- Fluency in local languages preferred
+          setMessages(prev => [...prev, clarificationMessage]);
+          setAwaitingJDInput(true);
+          setIsProcessingJD(false);
+          return;
+        }
 
-## What We Offer
-- Competitive salary commensurate with experience
-- Comprehensive benefits package
-- Professional development opportunities
-- Meaningful work with direct community impact
+        processingMessage = {
+          id: (Date.now() + 1).toString(),
+          content: `✅ Great! I have all the details I need from your brief.\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
 
-## Application Process
-Please submit your CV and cover letter explaining your interest in community development work.`;
+        setMessages(prev => [...prev, processingMessage]);
+
+        // Process as brief input
+        savedDraft = await processJDInput(profile.id, 'brief', userInput);
+      } else {
+        // Unknown input type
+        const clarificationMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `I'm not sure what type of input that is. Could you please:\n\n1. **Share a job brief** (e.g., "We need a program coordinator for...")\n2. **Paste a job posting URL** to improve an existing posting\n3. **Upload a file** with your job description draft\n\nWhich would you like to do?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'jd-request'
+        };
+
+        setMessages(prev => [...prev, clarificationMessage]);
+        setAwaitingJDInput(true);
+        setIsProcessingJD(false);
+        return;
+      }
+
+      if (!savedDraft) {
+        throw new Error('Failed to save JD input');
+      }
+
+      // Generate JD using AI
+      try {
+        const generatedJD = await generateJDFromInput(savedDraft);
 
         // Parse the generated JD into structured data
         const parsedJobData = parseJobDescription(generatedJD);
@@ -223,6 +277,7 @@ Please submit your CV and cover letter explaining your interest in community dev
           timestamp: new Date(),
           type: 'job-description',
           metadata: {
+            jdDraftId: savedDraft.id,
             jobData: parsedJobData,
           }
         };
@@ -237,11 +292,50 @@ Please submit your CV and cover letter explaining your interest in community dev
           type: 'job-description',
           title: 'Generated Job Description',
           content: 'AI-generated job description ready for review',
-          data: parsedJobData
+          data: parsedJobData,
+          draftId: savedDraft.id
         });
 
         console.log('✅ JD generation completed successfully');
-      }, 3000);
+
+      } catch (aiError) {
+        console.error('❌ AI generation error:', aiError);
+        
+        // Check if this is a rate limit error
+        if (aiError instanceof Error && aiError.message === 'RATE_LIMIT_FALLBACK') {
+          console.log('🚫 AI rate limit detected, showing fallback notification');
+          
+          // Show AI fallback notification
+          onContentChange({
+            type: 'ai-fallback',
+            title: 'AI Assistant Paused',
+            content: 'AI temporarily unavailable due to rate limits',
+            data: {
+              draftId: savedDraft.id,
+              message: "It looks like my AI assistant is currently busy helping others — we're hitting a temporary limit. But don't worry — your input is saved, and I'll be ready to resume shortly.\n\nYou can try again in a few minutes, or continue drafting manually if you'd like."
+            }
+          });
+
+          // Replace processing message with fallback info
+          const fallbackMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: `🧠 My AI assistant is temporarily busy, but your input is safely saved!\n\nI can retry generating your job description in a few minutes, or you can continue manually. Your progress won't be lost.`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'retry-option',
+            metadata: {
+              canRetry: true,
+              retryDraftId: savedDraft.id
+            }
+          };
+
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? fallbackMessage : msg
+          ));
+        } else {
+          throw aiError; // Re-throw other errors
+        }
+      }
 
     } catch (error) {
       console.error('❌ Error processing JD input:', error);
@@ -387,51 +481,46 @@ Please submit your CV and cover letter explaining your interest in community dev
 
           setMessages(prev => [...prev, processingMessage]);
 
-          // Simulate file processing
-          setTimeout(async () => {
-            const generatedJD = `# Improved Job Description
+          // Process the file upload
+          const savedDraft = await processJDInput(profile.id, 'upload', file);
+          if (!savedDraft) {
+            throw new Error('Failed to save uploaded file');
+          }
 
-Based on your uploaded file "${file.name}", I've created an enhanced version with better structure and inclusive language.
+          // Generate improved JD
+          const generatedJD = await generateJDFromInput(savedDraft);
+          
+          // Parse the generated JD into structured data
+          const parsedJobData = parseJobDescription(generatedJD);
+          
+          await updateFlag('has_generated_jd', true);
 
-## Role Overview
-[Enhanced content based on your original file]
+          // Create final message with improved job description
+          const jobMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: generatedJD,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'job-description',
+            metadata: {
+              jdDraftId: savedDraft.id,
+              jobData: parsedJobData,
+            }
+          };
 
-## Key Responsibilities
-- [Improved responsibilities from your document]
-- [Additional clarity and structure]
+          // Replace processing message with final result
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? jobMessage : msg
+          ));
 
-## Qualifications & Experience
-- [Enhanced qualifications section]
-- [More inclusive language]
-
-This is a mock improvement - in production, we would extract and enhance the actual file content.`;
-
-            const parsedJobData = parseJobDescription(generatedJD);
-            await updateFlag('has_generated_jd', true);
-
-            const jobMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              content: generatedJD,
-              sender: 'assistant',
-              timestamp: new Date(),
-              type: 'job-description',
-              metadata: {
-                jobData: parsedJobData,
-              }
-            };
-
-            setMessages(prev => prev.map(msg => 
-              msg.id === processingMessage.id ? jobMessage : msg
-            ));
-
-            onContentChange({
-              type: 'job-description',
-              title: 'Generated Job Description',
-              content: 'AI-generated job description ready for review',
-              data: parsedJobData
-            });
-
-          }, 3000);
+          // Show the structured JD in the right panel
+          onContentChange({
+            type: 'job-description',
+            title: 'Generated Job Description',
+            content: 'AI-generated job description ready for review',
+            data: parsedJobData,
+            draftId: savedDraft.id
+          });
 
         } catch (error) {
           console.error('❌ Error processing JD file upload:', error);
@@ -516,7 +605,7 @@ This is a mock improvement - in production, we would extract and enhance the act
       // Send the assistant message immediately
       const jdRequestMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. Job Brief + org/project link\n2. Job Brief only\n3. Upload a JD draft (PDF/DOCX)\n4. Paste a link to a reference job post\n\nPlease share one of these to begin.",
+        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Paste a brief** (e.g., \"We need a field coordinator for a migration project…\")\n2. **Upload a JD draft** you've written — I'll refine and improve it.\n3. **Paste a link** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
         sender: 'assistant',
         timestamp: new Date(),
         type: 'jd-request',
@@ -739,6 +828,8 @@ This is a mock improvement - in production, we would extract and enhance the act
                           onEdit={() => handleEditJob(message.id)}
                           onPreview={() => handlePreviewJob(message.id)}
                           onPublish={() => handlePublishJob(message.id)}
+                          onDownload={() => handlePreviewJob(message.id)}
+                          onShare={() => handlePreviewJob(message.id)}
                           isPublishing={isPublishing}
                         />
                       )}
