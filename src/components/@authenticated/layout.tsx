@@ -3,14 +3,10 @@ import { motion } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
-import { JobDescriptionOutput } from '@/components/jd/JobDescriptionOutput';
-import { AIFallbackNotification } from '@/components/jd/AIFallbackNotification';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
-import { retryAIGeneration } from '@/lib/jobDescriptionService';
-import { parseJobDescription } from '@/lib/jobDescriptionParser';
 
 interface AuthenticatedLayoutProps {
   user: any;
@@ -20,7 +16,6 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
   const [currentPage, setCurrentPage] = useState('workspace');
   const [mainContent, setMainContent] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [isRetryingAI, setIsRetryingAI] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -154,289 +149,6 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
     setMainContent(content);
   };
 
-  const handleJobSave = async (jobData: any) => {
-    if (!profile?.id) {
-      toast.error('You must be logged in to save a job');
-      return;
-    }
-
-    try {
-      console.log('Saving job data:', jobData);
-      
-      // Combine all sections into a comprehensive description
-      const fullDescription = `${jobData.title}\n\n${jobData.summary}\n\n${
-        jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n')
-      }`;
-      
-      // Add salary range if available
-      const descriptionWithSalary = jobData.salaryRange 
-        ? `${fullDescription}\n\nSalary Range: ${jobData.salaryRange}` 
-        : fullDescription;
-      
-      // Add how to apply if available
-      const completeDescription = jobData.howToApply
-        ? `${descriptionWithSalary}\n\nHow to Apply:\n${jobData.howToApply}`
-        : descriptionWithSalary;
-      
-      // Map job data to database schema
-      const jobRecord = {
-        user_id: profile.id,
-        title: jobData.title,
-        description: completeDescription,
-        organization_name: jobData.organization,
-        org_name: jobData.organization,
-        org_website: null, // Not directly available in the current UI
-        responsibilities: jobData.sections.find((s: any) => 
-          s.id === 'responsibilities' || 
-          s.title.toLowerCase().includes('responsibilities')
-        )?.content || '',
-        qualifications: jobData.sections.find((s: any) => 
-          s.id === 'qualifications' || 
-          s.title.toLowerCase().includes('qualifications') ||
-          s.title.toLowerCase().includes('experience')
-        )?.content || '',
-        sdgs: jobData.sdgs,
-        sector: jobData.sector[0], // Database expects a string, not an array
-        contract_type: jobData.contractType,
-        location: jobData.location,
-        how_to_apply: jobData.howToApply || '',
-        application_end_date: jobData.applicationDeadline || null,
-        status: 'draft',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Check if we're updating an existing job or creating a new one
-      if (jobData.id) {
-        // Update existing job
-        const { error } = await supabase
-          .from('jobs')
-          .update({
-            ...jobRecord,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', jobData.id)
-          .eq('user_id', profile.id);
-
-        if (error) {
-          throw error;
-        }
-
-        toast.success('Job updated successfully!');
-      } else {
-        // Create new job
-        const { data, error } = await supabase
-          .from('jobs')
-          .insert(jobRecord)
-          .select()
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        // Update the job data with the new ID
-        setMainContent(prev => ({
-          ...prev,
-          data: {
-            ...prev.data,
-            id: data.id
-          }
-        }));
-
-        toast.success('Job saved as draft!');
-      }
-    } catch (error) {
-      console.error('Error saving job:', error);
-      toast.error('Failed to save job. Please try again.');
-    }
-  };
-
-  const handleJobPublish = async (jobData: any) => {
-    if (!profile?.id) {
-      toast.error('You must be logged in to publish a job');
-      return;
-    }
-
-    try {
-      console.log('Publishing job data:', jobData);
-      
-      // Combine all sections into a comprehensive description
-      const fullDescription = `${jobData.title}\n\n${jobData.summary}\n\n${
-        jobData.sections.map((s: any) => `${s.title}\n${s.content}`).join('\n\n')
-      }`;
-      
-      // Add salary range if available
-      const descriptionWithSalary = jobData.salaryRange 
-        ? `${fullDescription}\n\nSalary Range: ${jobData.salaryRange}` 
-        : fullDescription;
-      
-      // Add how to apply if available
-      const completeDescription = jobData.howToApply
-        ? `${descriptionWithSalary}\n\nHow to Apply:\n${jobData.howToApply}`
-        : descriptionWithSalary;
-      
-      // Map job data to database schema
-      const jobRecord = {
-        user_id: profile.id,
-        title: jobData.title,
-        description: completeDescription,
-        organization_name: jobData.organization,
-        org_name: jobData.organization,
-        org_website: null, // Not directly available in the current UI
-        responsibilities: jobData.sections.find((s: any) => 
-          s.id === 'responsibilities' || 
-          s.title.toLowerCase().includes('responsibilities')
-        )?.content || '',
-        qualifications: jobData.sections.find((s: any) => 
-          s.id === 'qualifications' || 
-          s.title.toLowerCase().includes('qualifications') ||
-          s.title.toLowerCase().includes('experience')
-        )?.content || '',
-        sdgs: jobData.sdgs,
-        sector: jobData.sector[0], // Database expects a string, not an array
-        contract_type: jobData.contractType,
-        location: jobData.location,
-        how_to_apply: jobData.howToApply || '',
-        application_end_date: jobData.applicationDeadline || null,
-        status: 'published',
-        published_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Check if we're updating an existing job or creating a new one
-      if (jobData.id) {
-        // Update existing job
-        const { error } = await supabase
-          .from('jobs')
-          .update({
-            ...jobRecord,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', jobData.id)
-          .eq('user_id', profile.id);
-
-        if (error) {
-          throw error;
-        }
-      } else {
-        // Create new job
-        const { error } = await supabase
-          .from('jobs')
-          .insert(jobRecord);
-
-        if (error) {
-          throw error;
-        }
-      }
-
-      toast.success('Job published successfully!');
-      
-      // Update user progress
-      const { updateFlag } = await import('@/hooks/useUserProgress');
-      await updateFlag('has_published_job', true);
-      
-      // Navigate to jobs page
-      handleNavigate('jobs');
-    } catch (error) {
-      console.error('Error publishing job:', error);
-      toast.error('Failed to publish job. Please try again.');
-    }
-  };
-
-  // Handle AI fallback retry
-  const handleRetryAI = async () => {
-    if (!mainContent?.data?.draftId) {
-      toast.error('No draft available to retry');
-      return;
-    }
-    
-    setIsRetryingAI(true);
-    
-    try {
-      console.log('🔄 Retrying AI generation for draft:', mainContent.data.draftId);
-      
-      // Attempt to retry AI generation
-      const generatedJD = await retryAIGeneration(mainContent.data.draftId);
-      
-      // Parse the generated JD into structured data
-      const parsedJobData = parseJobDescription(generatedJD);
-      
-      // Update content to show successful generation
-      setMainContent({
-        type: 'job-description',
-        title: 'Generated Job Description',
-        content: 'AI-generated job description ready for review',
-        data: parsedJobData,
-        draftId: mainContent.data.draftId
-      });
-      
-      toast.success('Job description generated successfully!');
-      
-    } catch (error) {
-      console.error('Retry failed:', error);
-      
-      // Check if it's still a rate limit error
-      if (error instanceof Error && error.message === 'RATE_LIMIT_FALLBACK') {
-        toast.error('AI is still busy. Please try again in a few minutes.');
-      } else {
-        toast.error('AI generation failed. Please try again later.');
-      }
-    } finally {
-      setIsRetryingAI(false);
-    }
-  };
-
-  // Handle continue manually
-  const handleContinueManually = () => {
-    // Switch to manual editing mode
-    setMainContent({
-      type: 'job-description-manual',
-      title: 'Manual Job Description Editor',
-      content: 'Continue drafting your job description manually',
-      data: {
-        ...mainContent.data,
-        manualMode: true,
-        title: 'Manual Job Description',
-        summary: 'Start drafting your job description manually...',
-        sections: [
-          {
-            id: 'overview',
-            title: 'Role Overview',
-            content: 'Describe the role and its mission alignment...',
-            isLocked: false,
-            isEditing: true
-          },
-          {
-            id: 'responsibilities',
-            title: 'Key Responsibilities',
-            content: 'List the main duties and responsibilities...',
-            isLocked: false,
-            isEditing: false
-          },
-          {
-            id: 'qualifications',
-            title: 'Qualifications & Experience',
-            content: 'Specify required and preferred qualifications...',
-            isLocked: false,
-            isEditing: false
-          }
-        ],
-        organization: 'Your Organization',
-        location: 'Location',
-        contractType: 'Full-Time',
-        clarityScore: 75,
-        readingLevel: 'College',
-        deiScore: 80,
-        jargonWarnings: [],
-        sector: ['Development'],
-        sdgs: ['SDG 8']
-      }
-    });
-    
-    toast.info('Switched to manual editing mode');
-  };
-
   return (
     <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: '#F9F7F4' }}>
       {/* Sidebar - Start closed by default */}
@@ -466,7 +178,6 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               <ChatInterface 
                 onContentChange={handleContentChange} 
                 profile={profile} 
-                currentJDData={mainContent?.type === 'job-description' || mainContent?.type === 'job-description-manual' ? mainContent.data : null}
               />
             </motion.div>
           </ResizablePanel>
@@ -500,49 +211,7 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               style={{ backgroundColor: '#FFFFFF' }}
             >
               {mainContent ? (
-                <div className="h-full flex flex-col">
-                  {/* AI Fallback Notification */}
-                  {mainContent.type === 'ai-fallback' && (
-                    <div className="p-6 pb-0">
-                      <AIFallbackNotification
-                        onRetry={handleRetryAI}
-                        onContinueManually={handleContinueManually}
-                        isRetrying={isRetryingAI}
-                        message={mainContent.data?.message}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* Main Content */}
-                  <div className="flex-1 overflow-hidden">
-                    {mainContent.type === 'job-description' || mainContent.type === 'job-description-manual' ? (
-                      <JobDescriptionOutput
-                        jobData={mainContent.data}
-                        onSave={handleJobSave}
-                        onPublish={handleJobPublish}
-                      />
-                    ) : mainContent.type === 'ai-fallback' ? (
-                      <div className="h-full flex items-center justify-center p-6">
-                        <div className="text-center max-w-md">
-                          <h2 
-                            className="text-xl font-medium mb-4"
-                            style={{ color: '#3A3936' }}
-                          >
-                            Ready to Continue
-                          </h2>
-                          <p 
-                            className="text-sm font-light leading-relaxed"
-                            style={{ color: '#66615C' }}
-                          >
-                            Your job brief is safely saved. You can retry AI generation when it's back online, or start drafting manually right away.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <MainContentRenderer content={mainContent} />
-                    )}
-                  </div>
-                </div>
+                <MainContentRenderer content={mainContent} />
               ) : (
                 <AuthenticatedIndex profile={profile} />
               )}

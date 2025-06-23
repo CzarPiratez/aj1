@@ -159,8 +159,8 @@ export function CategorizedToolDropdowns({
       isActive: () => true,
       inactiveMessage: '',
       action: () => {
-        // Special JD tool handler - triggers immediate assistant message
-        onToolAction('post-job-generate-jd', 'POST_JD_TOOL_TRIGGER');
+        // Show construction message instead of triggering JD flow
+        onToolAction('post-job-generate-jd', '🚧 This feature is currently under construction. Please check back later!');
       }
     },
     {

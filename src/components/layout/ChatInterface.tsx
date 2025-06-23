@@ -18,18 +18,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
-import { JobActionButtons } from '@/components/chat/JobActionButtons';
 import { useUserProgress } from '@/hooks/useUserProgress';
 import { generateChatResponse, checkAIStatus } from '@/lib/ai';
-import { parseJobDescription } from '@/lib/jobDescriptionParser';
-import { parseJDInput, type ParsedJDInput } from '@/lib/jdInputParser';
-import { 
-  processJDInput,
-  generateJDFromInput,
-  createFallbackDraft,
-  type JDDraft
-} from '@/lib/jobDescriptionService';
-import { scrapeWebsite, type WebsiteContent } from '@/lib/jobBuilder';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -38,16 +28,10 @@ interface Message {
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline';
+  type?: 'suggestion' | 'progress' | 'normal';
   metadata?: {
     websiteContent?: any;
     jobId?: string;
-    jdDraftId?: string;
-    isJDRequest?: boolean;
-    jobData?: any;
-    canRetry?: boolean;
-    retryDraftId?: string;
-    parsedInput?: ParsedJDInput;
   };
 }
 
@@ -73,10 +57,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const [isTyping, setIsTyping] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [isProcessingJD, setIsProcessingJD] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
-  const [awaitingJDInput, setAwaitingJDInput] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -127,18 +108,12 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
     const currentInput = input;
     setInput('');
 
-    // Check if we're awaiting JD input
-    if (awaitingJDInput) {
-      await handleJDInputResponse(currentInput);
-      return;
-    }
-
     setIsTyping(true);
 
     // Use AI service for enhanced responses
     try {
       const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile, currentJDData);
+      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -166,230 +141,6 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       await updateProgressBasedOnInput(currentInput);
     } finally {
       setIsTyping(false);
-    }
-  };
-
-  const handleJDInputResponse = async (userInput: string) => {
-    console.log('🎯 Processing JD input response:', userInput);
-    setIsProcessingJD(true);
-    setAwaitingJDInput(false);
-
-    try {
-      // Parse the input to understand what type it is
-      const parsedInput = parseJDInput(userInput);
-      console.log('📊 Parsed input:', parsedInput);
-
-      // Update progress flag
-      await updateFlag('has_submitted_jd_inputs', true);
-
-      let processingMessage: Message;
-      let websiteContent: WebsiteContent | null = null;
-
-      // Handle different input types
-      if (parsedInput.type === 'website') {
-        // URL-only input - scrape the website
-        processingMessage = {
-          id: (Date.now() + 1).toString(),
-          content: `🔗 Perfect! I'm analyzing the job posting from: ${parsedInput.url}\n\nI'll extract the content and create an improved version with better structure, DEI language, and nonprofit alignment...`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          metadata: { parsedInput }
-        };
-
-        setMessages(prev => [...prev, processingMessage]);
-
-        try {
-          websiteContent = await scrapeWebsite(parsedInput.url!);
-          console.log('✅ Website scraped successfully:', websiteContent.title);
-        } catch (error) {
-          console.error('❌ Website scraping failed:', error);
-          // Create fallback content instead of throwing error
-          websiteContent = {
-            title: 'Job Posting',
-            description: '',
-            content: `Job posting from: ${parsedInput.url}`,
-            url: parsedInput.url!
-          };
-          console.log('⚠️ Using fallback website content');
-        }
-
-      } else if (parsedInput.type === 'manual' && parsedInput.url) {
-        // Manual input with URL - use both
-        processingMessage = {
-          id: (Date.now() + 1).toString(),
-          content: `✨ Excellent! I have both your job brief and organization link.\n\n🔗 Analyzing: ${parsedInput.url}\n📝 Brief: "${parsedInput.content.substring(0, 100)}..."\n\nCreating a comprehensive job description that combines your requirements with the organization's mission...`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          metadata: { parsedInput }
-        };
-
-        setMessages(prev => [...prev, processingMessage]);
-
-        try {
-          websiteContent = await scrapeWebsite(parsedInput.url!);
-          console.log('✅ Website scraped successfully for manual+link:', websiteContent.title);
-        } catch (error) {
-          console.warn('⚠️ Website scraping failed, continuing with brief only:', error);
-          // Continue with just the brief if website scraping fails
-          websiteContent = null;
-        }
-
-      } else if (parsedInput.type === 'manual') {
-        // Manual-only input
-        processingMessage = {
-          id: (Date.now() + 1).toString(),
-          content: `✅ Great! I have all the details I need from your brief.\n\n📝 Brief: "${parsedInput.content.substring(0, 150)}..."\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          metadata: { parsedInput }
-        };
-
-        setMessages(prev => [...prev, processingMessage]);
-
-      } else {
-        // Unknown input type - ask for clarification
-        const clarificationMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: `I'm not quite sure what type of input you've provided. For best results, please either:\n\n1. Provide a brief description of the job\n2. Share a link to a reference job posting\n3. Upload a file with job details\n\nCould you try again with one of these options?`,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'jd-request'
-        };
-
-        setMessages(prev => [...prev, clarificationMessage]);
-        setAwaitingJDInput(true);
-        setIsProcessingJD(false);
-        return;
-      }
-
-      // Process the input using the service
-      let savedDraft: JDDraft | null;
-      
-      if (websiteContent) {
-        // If we have website content, use it with 'website' type
-        savedDraft = await processJDInput(
-          profile.id, 
-          'website', 
-          websiteContent
-        );
-      } else {
-        // Otherwise use the text input with 'manual' type
-        savedDraft = await processJDInput(
-          profile.id, 
-          'manual', 
-          parsedInput.content
-        );
-      }
-
-      if (!savedDraft) {
-        throw new Error('Failed to save JD input');
-      }
-
-      // Generate JD using AI
-      try {
-        const generatedJD = await generateJDFromInput(savedDraft);
-
-        // Parse the generated JD into structured data
-        const parsedJobData = parseJobDescription(generatedJD);
-
-        // Update progress flag
-        await updateFlag('has_generated_jd', true);
-
-        // Create final message with job description
-        const jobMessage: Message = {
-          id: (Date.now() + 2).toString(),
-          content: generatedJD,
-          sender: 'assistant',
-          timestamp: new Date(),
-          type: 'job-description',
-          metadata: {
-            jdDraftId: savedDraft.id,
-            jobData: parsedJobData,
-          }
-        };
-
-        // Replace processing message with final result
-        setMessages(prev => prev.map(msg => 
-          msg.id === processingMessage.id ? jobMessage : msg
-        ));
-
-        // Show the structured JD in the right panel
-        onContentChange({
-          type: 'job-description',
-          title: 'Generated Job Description',
-          content: 'AI-generated job description ready for review',
-          data: parsedJobData,
-          draftId: savedDraft.id
-        });
-
-        console.log('✅ JD generation completed successfully');
-      } catch (error) {
-        console.error('❌ Error generating JD:', error);
-        
-        // Check if this is a rate limit error
-        if (error instanceof Error && error.message === 'RATE_LIMIT_FALLBACK') {
-          console.log('🚫 AI rate limit detected, creating fallback');
-          
-          // Create a fallback message
-          const fallbackMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `I'm currently experiencing high demand and have reached my AI processing limit. Your job description request has been saved, and you can try again in a few minutes or continue manually.`,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'retry-option',
-            metadata: {
-              canRetry: true,
-              retryDraftId: savedDraft.id
-            }
-          };
-          
-          // Replace processing message with fallback message
-          setMessages(prev => prev.map(msg => 
-            msg.id === processingMessage.id ? fallbackMessage : msg
-          ));
-          
-          // Show AI fallback notification in the right panel
-          onContentChange({
-            type: 'ai-fallback',
-            title: 'AI Assistant Paused',
-            content: 'AI is temporarily unavailable',
-            data: {
-              draftId: savedDraft.id,
-              message: `I'm currently experiencing high demand and have reached my AI processing limit. Your job description request has been saved, and you can try again in a few minutes or continue manually.`
-            }
-          });
-          
-          // Update progress flag
-          await updateFlag('jd_generation_failed', true);
-        } else {
-          // For other errors, show a generic error message
-          const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `❌ Sorry, I encountered an error while generating your job description. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-          
-          setMessages(prev => prev.map(msg => 
-            msg.id === processingMessage.id ? errorMessage : msg
-          ));
-        }
-      }
-
-    } catch (error) {
-      console.error('❌ Error processing JD input:', error);
-      
-      // Show error message
-      const errorMessage: Message = {
-        id: (Date.now() + 3).toString(),
-        content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
-
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsProcessingJD(false);
     }
   };
 
@@ -462,13 +213,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const updateMainContent = (userInput: string) => {
     const input = userInput.toLowerCase();
     
-    if (input.includes('job') && (input.includes('post') || input.includes('create'))) {
-      onContentChange({
-        type: 'jobs',
-        title: 'Job Management',
-        content: 'AI-powered job posting and management system'
-      });
-    } else if (input.includes('cv') || input.includes('resume')) {
+    if (input.includes('cv') || input.includes('resume')) {
       onContentChange({
         type: 'documents',
         title: 'Document Analysis',
@@ -497,142 +242,6 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Check if we're in JD mode and this is a supported file type
-    if (awaitingJDInput) {
-      const allowedTypes = ['doc', 'docx', 'pdf'];
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      
-      if (fileExtension && allowedTypes.includes(fileExtension)) {
-        // Process as JD file upload
-        setIsProcessingJD(true);
-        setAwaitingJDInput(false);
-
-        try {
-          await updateFlag('has_submitted_jd_inputs', true);
-
-          const processingMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            content: `📄 Perfect! I received your file: "${file.name}"\n\nI'm extracting the content and improving it with better structure, DEI language, and nonprofit alignment...`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, processingMessage]);
-
-          // Process the file upload using 'manual' type
-          const savedDraft = await processJDInput(profile.id, 'manual', file);
-          if (!savedDraft) {
-            throw new Error('Failed to save uploaded file');
-          }
-
-          try {
-            // Generate improved JD
-            const generatedJD = await generateJDFromInput(savedDraft);
-            
-            // Parse the generated JD into structured data
-            const parsedJobData = parseJobDescription(generatedJD);
-            
-            await updateFlag('has_generated_jd', true);
-
-            // Create final message with improved job description
-            const jobMessage: Message = {
-              id: (Date.now() + 2).toString(),
-              content: generatedJD,
-              sender: 'assistant',
-              timestamp: new Date(),
-              type: 'job-description',
-              metadata: {
-                jdDraftId: savedDraft.id,
-                jobData: parsedJobData,
-              }
-            };
-
-            // Replace processing message with final result
-            setMessages(prev => prev.map(msg => 
-              msg.id === processingMessage.id ? jobMessage : msg
-            ));
-
-            // Show the structured JD in the right panel
-            onContentChange({
-              type: 'job-description',
-              title: 'Generated Job Description',
-              content: 'AI-generated job description ready for review',
-              data: parsedJobData,
-              draftId: savedDraft.id
-            });
-          } catch (error) {
-            console.error('❌ Error generating JD from file:', error);
-            
-            // Check if this is a rate limit error
-            if (error instanceof Error && error.message === 'RATE_LIMIT_FALLBACK') {
-              console.log('🚫 AI rate limit detected, creating fallback');
-              
-              // Create a fallback message
-              const fallbackMessage: Message = {
-                id: (Date.now() + 3).toString(),
-                content: `I'm currently experiencing high demand and have reached my AI processing limit. Your job description request has been saved, and you can try again in a few minutes or continue manually.`,
-                sender: 'assistant',
-                timestamp: new Date(),
-                type: 'retry-option',
-                metadata: {
-                  canRetry: true,
-                  retryDraftId: savedDraft.id
-                }
-              };
-              
-              // Replace processing message with fallback message
-              setMessages(prev => prev.map(msg => 
-                msg.id === processingMessage.id ? fallbackMessage : msg
-              ));
-              
-              // Show AI fallback notification in the right panel
-              onContentChange({
-                type: 'ai-fallback',
-                title: 'AI Assistant Paused',
-                content: 'AI is temporarily unavailable',
-                data: {
-                  draftId: savedDraft.id,
-                  message: `I'm currently experiencing high demand and have reached my AI processing limit. Your job description request has been saved, and you can try again in a few minutes or continue manually.`
-                }
-              });
-              
-              // Update progress flag
-              await updateFlag('jd_generation_failed', true);
-            } else {
-              // For other errors, show a generic error message
-              const errorMessage: Message = {
-                id: (Date.now() + 3).toString(),
-                content: `❌ Sorry, I encountered an error while processing your file. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                sender: 'assistant',
-                timestamp: new Date(),
-              };
-              
-              setMessages(prev => prev.map(msg => 
-                msg.id === processingMessage.id ? errorMessage : msg
-              ));
-            }
-          }
-
-        } catch (error) {
-          console.error('❌ Error processing JD file upload:', error);
-          
-          const errorMessage: Message = {
-            id: (Date.now() + 3).toString(),
-            content: `❌ Sorry, I couldn't process that file. Please try again or use a different format.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
-            sender: 'assistant',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, errorMessage]);
-        } finally {
-          setIsProcessingJD(false);
-        }
-
-        e.target.value = '';
-        return;
-      }
-    }
 
     // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
@@ -681,32 +290,20 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
     setIsRecording(!isRecording);
   };
 
-  const canSend = input.trim().length > 0 && !isTyping && !isProcessingJD;
+  const canSend = input.trim().length > 0 && !isTyping;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool - immediately send assistant message
-    if (message === 'POST_JD_TOOL_TRIGGER') {
-      console.log('🎯 JD Tool triggered');
-      
-      // Update progress flag
-      updateFlag('has_started_jd', true);
-      
-      // Set awaiting input state
-      setAwaitingJDInput(true);
-      
-      // Send the assistant message immediately with all 4 options clearly listed
-      const jdRequestMessage: Message = {
+    // Special handling for JD tool - show construction message
+    if (toolId === 'post-job-generate-jd') {
+      const constructionMessage: Message = {
         id: Date.now().toString(),
-        content: "Let's get started on your job description. You can choose how you'd like to begin:\n\n1. **Provide a brief and a link** (e.g., \"We need a field coordinator for a migration project…\" + organization website)\n2. **Provide a brief only** (e.g., \"We need a field coordinator for a migration project…\")\n3. **Upload a JD draft** you've written — I'll refine and improve it.\n4. **Paste a link only** to an old job post — I'll fetch it and rewrite it with better clarity, DEI, and alignment.\n\nGive me one of these to begin! 🚀",
+        content: "🚧 The job posting tool is currently under construction. Please check back later for this feature!",
         sender: 'assistant',
         timestamp: new Date(),
-        type: 'jd-request',
-        metadata: {
-          isJDRequest: true
-        }
+        type: 'suggestion'
       };
       
-      setMessages(prev => [...prev, jdRequestMessage]);
+      setMessages(prev => [...prev, constructionMessage]);
       return;
     }
     
@@ -723,85 +320,6 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
-  };
-
-  // Job action handlers
-  const handleEditJob = (messageId: string) => {
-    toast.info('Job editing feature coming soon!');
-  };
-
-  const handlePreviewJob = (messageId: string) => {
-    toast.info('Job preview feature coming soon!');
-  };
-
-  const handlePublishJob = async (messageId: string) => {
-    const message = messages.find(m => m.id === messageId);
-    if (!message?.metadata?.jobId && !message?.metadata?.jdDraftId || !profile?.id) return;
-
-    setIsPublishing(true);
-    
-    try {
-      let jobId = message.metadata.jobId;
-      
-      // If we have a JD draft, create a job record first
-      if (message.metadata.jdDraftId && !jobId) {
-        const { data: jobData, error: jobError } = await supabase
-          .from('jobs')
-          .insert({
-            user_id: profile.id,
-            title: 'Generated Job Description',
-            description: message.content,
-            status: 'published',
-            published_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (jobError) {
-          throw jobError;
-        }
-        
-        jobId = jobData.id;
-      } else if (jobId) {
-        // Update existing job status to published
-        const { error } = await supabase
-          .from('jobs')
-          .update({ 
-            status: 'published',
-            published_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', jobId)
-          .eq('user_id', profile.id);
-
-        if (error) {
-          throw error;
-        }
-      }
-
-      // Update user progress
-      await updateFlag('has_published_job', true);
-
-      // Show success message
-      const successMessage: Message = {
-        id: Date.now().toString(),
-        content: "🎉 Congratulations! Your job has been published successfully. It's now live and visible to mission-aligned candidates on AidJobs.\n\nNext steps:\n• Monitor applications in your dashboard\n• Use our AI matching to find top candidates\n• Set up interview workflows",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'progress'
-      };
-
-      setMessages(prev => [...prev, successMessage]);
-      toast.success('Job published successfully!');
-
-    } catch (error) {
-      console.error('Error publishing job:', error);
-      toast.error('Failed to publish job. Please try again.');
-    } finally {
-      setIsPublishing(false);
-    }
   };
 
   return (
@@ -847,82 +365,16 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                         animate={{ scale: 1 }}
                         className={`inline-block p-3 rounded-2xl font-light leading-relaxed shadow-sm ${
                           message.type === 'suggestion' ? 'border-l-4' : ''
-                        } ${
-                          message.type === 'jd-request' ? 'border-l-4' : ''
-                        } ${
-                          message.type === 'retry-option' ? 'border-l-4' : ''
-                        } ${
-                          message.type === 'ai-offline' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
-                                         message.type === 'suggestion' ? '#FBE4D5' : 
-                                         message.type === 'jd-request' ? '#E8F5E8' : 
-                                         message.type === 'retry-option' ? '#FEF3CD' : 
-                                         message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
+                                         message.type === 'suggestion' ? '#FBE4D5' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
-                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
-                                          message.type === 'jd-request' ? '#10B981' : 
-                                          message.type === 'retry-option' ? '#F59E0B' : 
-                                          message.type === 'ai-offline' ? '#EF4444' : 'transparent'
+                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                        
-                        {/* Processing indicators */}
-                        {isProcessingJD && message.content.includes('working on') && (
-                          <div className="flex items-center mt-2 space-x-2">
-                            <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#D5765B' }} />
-                            <span className="text-xs" style={{ color: '#66615C' }}>
-                              Generating with AI...
-                            </span>
-                          </div>
-                        )}
-
-                        {/* JD Request indicators */}
-                        {message.type === 'jd-request' && (
-                          <div className="flex items-center mt-2 space-x-2">
-                            <div className="flex space-x-1">
-                              <FileText className="w-3 h-3" style={{ color: '#10B981' }} />
-                              <Paperclip className="w-3 h-3" style={{ color: '#10B981' }} />
-                              <Link className="w-3 h-3" style={{ color: '#10B981' }} />
-                            </div>
-                            <span className="text-xs font-medium" style={{ color: '#10B981' }}>
-                              Brief • Upload • Link
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Retry option indicators */}
-                        {message.type === 'retry-option' && message.metadata?.canRetry && (
-                          <div className="flex items-center mt-2 space-x-2">
-                            <RefreshCw className="w-3 h-3" style={{ color: '#F59E0B' }} />
-                            <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>
-                              Retry Available
-                            </span>
-                          </div>
-                        )}
-
-                        {/* AI Offline indicators */}
-                        {message.type === 'ai-offline' && (
-                          <div className="flex items-center mt-2 space-x-2">
-                            <Globe className="w-3 h-3" style={{ color: '#EF4444' }} />
-                            <span className="text-xs font-medium" style={{ color: '#EF4444' }}>
-                              AI Offline
-                            </span>
-                          </div>
-                        )}
                       </motion.div>
-                      
-                      {/* Job Action Buttons */}
-                      {message.type === 'job-description' && message.sender === 'assistant' && (
-                        <JobActionButtons
-                          onEdit={() => handleEditJob(message.id)}
-                          onPreview={() => handlePreviewJob(message.id)}
-                          onPublish={() => handlePublishJob(message.id)}
-                          isPublishing={isPublishing}
-                        />
-                      )}
                       
                       <p 
                         className="text-xs mt-2 font-light"
@@ -938,7 +390,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
 
             {/* Typing Indicator */}
             <AnimatePresence>
-              {(isTyping || isProcessingJD) && (
+              {isTyping && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -983,7 +435,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            {isProcessingJD ? 'Generating job description...' : 'AI is thinking...'}
+                            AI is thinking...
                           </span>
                         </div>
                       </div>
@@ -1004,7 +456,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
           <input
             ref={fileInputRef}
             type="file"
-            accept={awaitingJDInput ? ".doc,.docx,.pdf" : ".pdf,.docx,.txt,.json"}
+            accept=".pdf,.docx,.txt,.json"
             onChange={handleFileChange}
             className="hidden"
           />
@@ -1029,13 +481,13 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder="Ask me anything about jobs, CVs, or matches..."
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
                   boxShadow: 'none'
                 }}
-                disabled={isTyping || isProcessingJD}
+                disabled={isTyping}
               />
 
               <motion.div
@@ -1070,13 +522,13 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                       onClick={handleFileUpload}
                       className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
                       style={{ color: '#66615C' }}
-                      disabled={isTyping || isProcessingJD}
+                      disabled={isTyping}
                     >
                       <Paperclip className="w-2.5 h-2.5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    {awaitingJDInput ? 'Upload JD file (.doc, .docx, .pdf)' : 'Attach files (.pdf, .docx, .txt, .json)'}
+                    Attach files (.pdf, .docx, .txt, .json)
                   </TooltipContent>
                 </Tooltip>
 
@@ -1086,7 +538,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
-                    disabled={isTyping || isProcessingJD}
+                    disabled={isTyping}
                   />
                 )}
 
@@ -1101,7 +553,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                         color: isRecording ? '#D5765B' : '#66615C',
                         backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
                       }}
-                      disabled={isTyping || isProcessingJD}
+                      disabled={isTyping}
                     >
                       {isRecording ? (
                         <Square className="w-2.5 h-2.5" />
@@ -1129,7 +581,7 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Share your job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              Press Enter to send, Shift+Enter for new line
             </p>
           </div>
         </div>
