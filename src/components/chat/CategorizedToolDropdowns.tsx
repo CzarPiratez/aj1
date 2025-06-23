@@ -16,7 +16,8 @@ import {
   ChevronDown,
   Sparkles,
   FileText,
-  Zap
+  Zap,
+  Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,6 +143,15 @@ export function CategorizedToolDropdowns({
   ];
 
   const organizationTools: Tool[] = [
+    {
+      id: 'post-job-generate-jd',
+      label: 'Post a Job / Generate JD',
+      icon: Plus,
+      description: 'Create and post job descriptions with AI assistance',
+      isActive: () => true,
+      inactiveMessage: '',
+      action: () => onToolAction('post-job-generate-jd', 'I want to post a job or generate a job description')
+    },
     {
       id: 'generate-org-profile',
       label: 'Generate Org Profile',
