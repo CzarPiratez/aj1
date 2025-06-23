@@ -28,7 +28,6 @@ import {
   Mail,
   RotateCcw,
   Wand2,
-  Plus,
   Calendar,
   Bell,
   Activity,
@@ -316,7 +315,7 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
             </div>
           </motion.div>
 
-          {/* For Organizations - Left Aligned with Right-Aligned Button */}
+          {/* For Organizations - Left Aligned with Coming Soon Message */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -337,11 +336,12 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
                 </div>
                 <Button
                   size="sm"
-                  className="h-8 px-4 rounded-lg font-light text-white hover:opacity-90 transition-all duration-200 text-sm"
+                  disabled
+                  className="h-8 px-4 rounded-lg font-light text-white opacity-50 text-sm"
                   style={{ backgroundColor: '#D5765B' }}
                 >
-                  <Plus className="w-3 h-3 mr-2" />
-                  Post Job
+                  <Rocket className="w-3 h-3 mr-2" />
+                  Coming Soon
                 </Button>
               </div>
             </div>
@@ -355,12 +355,12 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
                   transition={{ delay: 0.4 + index * 0.05 }}
                 >
                   <Card 
-                    className="border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group h-16"
-                    style={{ backgroundColor: '#FFFFFF' }}
+                    className="border-0 shadow-sm transition-all duration-200 h-16 opacity-75"
+                    style={{ backgroundColor: '#F1EFEC' }}
                   >
                     <CardContent className="p-4 h-full flex items-center">
                       <div className="flex items-center space-x-3 w-full">
-                        <CheckCircle 
+                        <Rocket 
                           className="w-4 h-4 flex-shrink-0"
                           style={{ color: '#D5765B' }}
                         />
@@ -378,10 +378,13 @@ export function AuthenticatedIndex({ profile }: AuthenticatedIndexProps) {
                             {feature.description}
                           </p>
                         </div>
-                        <ArrowRight 
-                          className="w-3 h-3 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" 
-                          style={{ color: '#D5765B' }} 
-                        />
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs px-2 py-1"
+                          style={{ borderColor: '#D5765B', color: '#D5765B' }}
+                        >
+                          Soon
+                        </Badge>
                       </div>
                     </CardContent>
                   </Card>
@@ -468,16 +471,16 @@ const quickStartActions = [
     icon: Search
   },
   {
-    id: 'post-job',
-    title: 'Post Job',
-    subtitle: 'AI writing',
-    icon: Briefcase
-  },
-  {
     id: 'ai-chat',
     title: 'AI Chat',
     subtitle: 'Get guidance',
     icon: MessageSquare
+  },
+  {
+    id: 'career-insights',
+    title: 'Career Insights',
+    subtitle: 'Skill analysis',
+    icon: Lightbulb
   }
 ];
 
@@ -510,28 +513,20 @@ const candidateFeatures = [
 
 const organizationFeatures = [
   {
-    title: 'AI-crafted job descriptions',
-    description: 'Inclusive, optimized, purpose-first'
+    title: 'AI-powered job posting',
+    description: 'Coming soon - intelligent job description generation'
   },
   {
-    title: 'Intelligent compatibility',
-    description: 'Purpose, tone, values, alignment'
+    title: 'Smart candidate matching',
+    description: 'Coming soon - AI-driven talent discovery'
   },
   {
-    title: 'Diversity & inclusion metrics',
-    description: 'Equity-aware hiring suggestions'
+    title: 'Organization profile builder',
+    description: 'Coming soon - showcase your mission and culture'
   },
   {
-    title: 'Predictive hiring signals',
-    description: 'Retention and sector compatibility'
-  },
-  {
-    title: 'Gig & project talent',
-    description: 'Short-term, mission-critical work'
-  },
-  {
-    title: 'Auto build organization hiring profile',
-    description: 'From your weblink'
+    title: 'Hiring analytics',
+    description: 'Coming soon - insights into your recruitment process'
   }
 ];
 
