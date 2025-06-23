@@ -10,7 +10,9 @@ import {
   Loader2,
   FileText,
   Link,
-  RefreshCw
+  RefreshCw,
+  X,
+  Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,13 +37,19 @@ import {
   type JDDraft
 } from '@/lib/jobDescriptionService';
 import { scrapeWebsite, type WebsiteContent } from '@/lib/jobBuilder';
+import {
+  parseJDInput,
+  getFollowUpQuestions,
+  isDetectionReliable,
+  getInputTypeDescription
+} from '@/lib/jdInputDetection';
 
 interface Message {
   id: string;
   content: string;
   sender: 'user' | 'assistant';
   timestamp: Date;
-  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline';
+  type?: 'suggestion' | 'progress' | 'normal' | 'job-description' | 'jd-request' | 'retry-option' | 'ai-offline' | 'follow-up';
   metadata?: {
     websiteContent?: any;
     jobId?: string;
@@ -50,6 +58,7 @@ interface Message {
     jobData?: any;
     canRetry?: boolean;
     retryDraftId?: string;
+    followUpQuestions?: string[];
   };
 }
 
@@ -59,7 +68,7 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
-  const { flags, loading: progressLoading, updateFlag, updateFlags } = useUserProgress(profile?.id);
+  const { flags, loading: progressLoading, updateFlag, updateFlags, resetAllProgressFlags } = useUserProgress(profile?.id);
   
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -78,6 +87,13 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isPublishing, setIsPublishing] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [awaitingJDInput, setAwaitingJDInput] = useState(false);
+  const [awaitingFollowUp, setAwaitingFollowUp] = useState(false);
+  const [currentJDData, setCurrentJDData] = useState<any>(null);
+  const [jdInputDetails, setJdInputDetails] = useState<{
+    brief?: string;
+    link?: string;
+    followUpResponses?: Record<string, string>;
+  }>({});
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -134,12 +150,18 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       return;
     }
 
+    // Check if we're awaiting follow-up responses
+    if (awaitingFollowUp) {
+      await handleFollowUpResponse(currentInput);
+      return;
+    }
+
     setIsTyping(true);
 
     // Use AI service for enhanced responses
     try {
       const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile, currentJDData);
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -179,14 +201,21 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Update progress flag
       await updateFlag('has_submitted_jd_inputs', true);
 
+      // Use the enhanced input detection
+      const detectedInput = parseJDInput(userInput);
+      console.log('🔍 Detected input type:', detectedInput);
+
       let processingMessage: Message;
       let inputType: 'brief' | 'link' | 'upload';
       let processedInput: string | WebsiteContent;
+      let followUpQuestions: string[] = [];
 
-      if (isValidJDUrl(userInput.trim())) {
+      // Process based on detected input type
+      if (detectedInput.inputType === 'referenceLink' || 
+          (detectedInput.inputType === 'briefWithLink' && detectedInput.link)) {
         // URL provided - scrape website content first
         inputType = 'link';
-        const url = userInput.trim();
+        const url = detectedInput.link as string;
         
         processingMessage = {
           id: (Date.now() + 1).toString(),
@@ -196,6 +225,20 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         };
 
         setMessages(prev => [...prev, processingMessage]);
+
+        // Store brief if available
+        if (detectedInput.inputType === 'briefWithLink' && detectedInput.brief) {
+          setJdInputDetails(prev => ({
+            ...prev,
+            brief: detectedInput.brief,
+            link: url
+          }));
+        } else {
+          setJdInputDetails(prev => ({
+            ...prev,
+            link: url
+          }));
+        }
 
         // Scrape website content
         try {
@@ -208,6 +251,11 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               ? { ...msg, content: `✅ Website analyzed: ${websiteContent.title}\n\n🤖 Now creating a comprehensive, professional job description that's mission-aligned and inclusive...` }
               : msg
           ));
+
+          // Check if we need follow-up questions
+          if (detectedInput.inputType === 'referenceLink') {
+            followUpQuestions = getFollowUpQuestions(detectedInput);
+          }
         } catch (scrapeError) {
           console.error('Error scraping website:', scrapeError);
           
@@ -249,6 +297,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               }
             });
 
+            setIsProcessingJD(false);
             return;
           } else {
             // Show general error message
@@ -260,18 +309,18 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                   }
                 : msg
             ));
+            setIsProcessingJD(false);
             return;
           }
         }
-      } else {
-        // Brief text provided
-        const validation = validateBriefInput(userInput);
-        
-        if (!validation.isValid) {
+      } else if (detectedInput.inputType === 'briefOnly' || 
+                (detectedInput.inputType === 'unknown' && detectedInput.confidence < 0.7)) {
+        // Brief text provided or unclear input
+        if (detectedInput.inputType === 'unknown' || !isDetectionReliable(detectedInput)) {
           // Ask for more information
           const clarificationMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: `${validation.reason}\n\nFor example: "We need a field coordinator for a migration project in Kenya. Looking for someone with 3+ years experience in humanitarian response, M&E, and team management."`,
+            content: `I need a bit more information to create a comprehensive job description. Could you provide more details about the role, responsibilities, required experience, or the organization's work?\n\nFor example: "We need a field coordinator for a migration project in Kenya. Looking for someone with 3+ years experience in humanitarian response, M&E, and team management."`,
             sender: 'assistant',
             timestamp: new Date(),
             type: 'jd-request'
@@ -284,7 +333,13 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         }
 
         inputType = 'brief';
-        processedInput = userInput;
+        processedInput = detectedInput.brief || userInput;
+        
+        // Store brief
+        setJdInputDetails(prev => ({
+          ...prev,
+          brief: detectedInput.brief || userInput
+        }));
         
         processingMessage = {
           id: (Date.now() + 1).toString(),
@@ -294,6 +349,23 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         };
 
         setMessages(prev => [...prev, processingMessage]);
+        
+        // Get follow-up questions
+        followUpQuestions = getFollowUpQuestions(detectedInput);
+      } else {
+        // Unrecognized input
+        const clarificationMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `I'm not quite sure what type of job description input you're providing. Could you please:\n\n1. Share a job brief (e.g., "We need a program manager with 5+ years experience...")\n2. Provide a link to a reference job or organization website\n3. Upload a file with your draft job description`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'jd-request'
+        };
+
+        setMessages(prev => [...prev, clarificationMessage]);
+        setAwaitingJDInput(true);
+        setIsProcessingJD(false);
+        return;
       }
 
       try {
@@ -301,6 +373,31 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         const savedDraft = await processJDInput(profile.id, inputType, processedInput);
         if (!savedDraft) {
           throw new Error('Failed to save JD input');
+        }
+
+        // If we have follow-up questions, ask them before generating
+        if (followUpQuestions.length > 0) {
+          const followUpMessage: Message = {
+            id: (Date.now() + 2).toString(),
+            content: `I have the main details, but to create the best possible job description, could you provide a few more specifics?\n\n${followUpQuestions.map((q, i) => `${i+1}. ${q}`).join('\n')}`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'follow-up',
+            metadata: {
+              followUpQuestions,
+              jdDraftId: savedDraft.id
+            }
+          };
+
+          // Replace processing message with follow-up questions
+          setMessages(prev => prev.map(msg => 
+            msg.id === processingMessage.id ? followUpMessage : msg
+          ));
+
+          // Set state to await follow-up responses
+          setAwaitingFollowUp(true);
+          setIsProcessingJD(false);
+          return;
         }
 
         // Generate JD using AI
@@ -315,10 +412,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         // Create final message with job description
         const jobMessage: Message = {
           id: (Date.now() + 2).toString(),
-          content: generatedJD,
+          content: `I've created your job description! You can now review and edit it in the panel to the right. Here are some things you might want to customize:\n\n• Review the job title and summary\n• Check the responsibilities and qualifications\n• Adjust the application deadline\n• Add any specific application instructions\n\nWhen you're ready, you can publish the job to make it visible to candidates.`,
           sender: 'assistant',
           timestamp: new Date(),
-          type: 'job-description',
+          type: 'normal',
           metadata: {
             jdDraftId: savedDraft.id,
             jobData: parsedJobData,
@@ -329,6 +426,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         setMessages(prev => prev.map(msg => 
           msg.id === processingMessage.id ? jobMessage : msg
         ));
+
+        // Store current JD data for chat context
+        setCurrentJDData(parsedJobData);
 
         // Show the structured JD in the right panel
         onContentChange({
@@ -367,6 +467,11 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             content: "It looks like my AI assistant is currently busy helping others — we're hitting a temporary limit. But don't worry — your input is saved, and I'll be ready to resume shortly.",
             sender: 'assistant',
             timestamp: new Date(),
+            type: 'retry-option',
+            metadata: {
+              canRetry: true,
+              retryDraftId: fallbackDraft?.id
+            }
           };
 
           // Replace processing message with fallback message
@@ -393,6 +498,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
             content: "I was just about to generate your job description, but looks like my AI brain needs a moment to reconnect. No worries though — your input is safe, and we'll pick up from right here once I'm back online. You can continue editing manually for now if you'd like.",
             sender: 'assistant',
             timestamp: new Date(),
+            type: 'ai-offline'
           };
 
           // Replace processing message with fallback message
@@ -421,6 +527,110 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       const errorMessage: Message = {
         id: (Date.now() + 3).toString(),
         content: `❌ Sorry, I encountered an error while processing your input. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsProcessingJD(false);
+    }
+  };
+
+  const handleFollowUpResponse = async (userInput: string) => {
+    setAwaitingFollowUp(false);
+    setIsProcessingJD(true);
+
+    try {
+      // Find the last follow-up message
+      const followUpMessage = [...messages].reverse().find(m => m.type === 'follow-up');
+      if (!followUpMessage || !followUpMessage.metadata?.jdDraftId) {
+        throw new Error('Follow-up context not found');
+      }
+
+      // Store the follow-up response
+      setJdInputDetails(prev => ({
+        ...prev,
+        followUpResponses: {
+          ...prev.followUpResponses,
+          followUp: userInput
+        }
+      }));
+
+      // Show processing message
+      const processingMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Thanks for those details! Now creating your comprehensive job description...`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, processingMessage]);
+
+      // Get the draft
+      const draftId = followUpMessage.metadata.jdDraftId;
+
+      // Generate JD using AI
+      const generatedJD = await generateJDFromInput({
+        id: draftId,
+        user_id: profile.id,
+        input_type: 'manual',
+        raw_input: JSON.stringify({
+          ...jdInputDetails,
+          followUpResponses: {
+            ...jdInputDetails.followUpResponses,
+            followUp: userInput
+          }
+        }),
+        input_summary: 'Job brief with follow-up details',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
+
+      // Parse the generated JD into structured data
+      const parsedJobData = parseJobDescription(generatedJD);
+
+      // Update progress flag
+      await updateFlag('has_generated_jd', true);
+
+      // Create final message with job description
+      const jobMessage: Message = {
+        id: (Date.now() + 2).toString(),
+        content: `I've created your job description! You can now review and edit it in the panel to the right. Here are some things you might want to customize:\n\n• Review the job title and summary\n• Check the responsibilities and qualifications\n• Adjust the application deadline\n• Add any specific application instructions\n\nWhen you're ready, you can publish the job to make it visible to candidates.`,
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'normal',
+        metadata: {
+          jdDraftId: draftId,
+          jobData: parsedJobData,
+        }
+      };
+
+      // Replace processing message with final result
+      setMessages(prev => prev.map(msg => 
+        msg.id === processingMessage.id ? jobMessage : msg
+      ));
+
+      // Store current JD data for chat context
+      setCurrentJDData(parsedJobData);
+
+      // Show the structured JD in the right panel
+      onContentChange({
+        type: 'job-description',
+        title: 'Generated Job Description',
+        content: 'AI-generated job description ready for review',
+        data: parsedJobData,
+        draftId: draftId
+      });
+
+    } catch (error) {
+      console.error('❌ Error processing follow-up response:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: (Date.now() + 3).toString(),
+        content: `❌ Sorry, I encountered an error while generating your job description. Please try again.\n\nError: ${error instanceof Error ? error.message : 'Unknown error'}`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -575,10 +785,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           // Create final message with improved job description
           const jobMessage: Message = {
             id: (Date.now() + 2).toString(),
-            content: generatedJD,
+            content: `I've created your job description based on the uploaded file! You can now review and edit it in the panel to the right. Here are some things you might want to customize:\n\n• Review the job title and summary\n• Check the responsibilities and qualifications\n• Adjust the application deadline\n• Add any specific application instructions\n\nWhen you're ready, you can publish the job to make it visible to candidates.`,
             sender: 'assistant',
             timestamp: new Date(),
-            type: 'job-description',
+            type: 'normal',
             metadata: {
               jdDraftId: savedDraft.id,
               jobData: parsedJobData,
@@ -589,6 +799,9 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           setMessages(prev => prev.map(msg => 
             msg.id === processingMessage.id ? jobMessage : msg
           ));
+
+          // Store current JD data for chat context
+          setCurrentJDData(parsedJobData);
 
           // Show the structured JD in the right panel
           onContentChange({
@@ -673,6 +886,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     if (message === 'POST_JD_TOOL_TRIGGER') {
       console.log('🎯 JD Tool triggered');
       
+      // Reset JD input details
+      setJdInputDetails({});
+      setCurrentJDData(null);
+      
       // Update progress flag
       updateFlag('has_started_jd', true);
       
@@ -708,6 +925,28 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       type: 'suggestion'
     };
     setMessages(prev => [...prev, inactiveMessage]);
+  };
+
+  // Start a new JD generation process
+  const handleStartNewJD = () => {
+    // Reset states
+    setJdInputDetails({});
+    setCurrentJDData(null);
+    setAwaitingJDInput(false);
+    setAwaitingFollowUp(false);
+    
+    // Clear right panel
+    onContentChange(null);
+    
+    // Send message to start new JD
+    const newJDMessage: Message = {
+      id: Date.now().toString(),
+      content: "Would you like to start creating a new job description? I can help you with that!",
+      sender: 'assistant',
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, newJDMessage]);
   };
 
   // Job action handlers
@@ -838,16 +1077,20 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           message.type === 'retry-option' ? 'border-l-4' : ''
                         } ${
                           message.type === 'ai-offline' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'follow-up' ? 'border-l-4' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
                                          message.type === 'suggestion' ? '#FBE4D5' : 
                                          message.type === 'jd-request' ? '#FBE4D5' : 
+                                         message.type === 'follow-up' ? '#E8F5E8' : 
                                          message.type === 'retry-option' ? '#FEF3CD' : 
                                          message.type === 'ai-offline' ? '#FEF2F2' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
                           borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
                                           message.type === 'jd-request' ? '#D5765B' : 
+                                          message.type === 'follow-up' ? '#10B981' : 
                                           message.type === 'retry-option' ? '#F59E0B' : 
                                           message.type === 'ai-offline' ? '#EF4444' : 'transparent'
                         }}
@@ -869,6 +1112,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           <div className="flex items-center mt-3">
                             <span className="text-xs font-light" style={{ color: '#D5765B' }}>
                               Brief + Link • Brief Only • Upload • Reference Link
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Follow-up questions indicators */}
+                        {message.type === 'follow-up' && message.metadata?.followUpQuestions && (
+                          <div className="flex items-center mt-3">
+                            <span className="text-xs font-light" style={{ color: '#10B981' }}>
+                              Additional details needed
                             </span>
                           </div>
                         )}
@@ -902,6 +1154,26 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                           onPublish={() => handlePublishJob(message.id)}
                           isPublishing={isPublishing}
                         />
+                      )}
+
+                      {/* Start New JD Button - Show for normal messages when we have a current JD */}
+                      {currentJDData && message.sender === 'assistant' && !message.type && (
+                        <div className="mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStartNewJD}
+                            className="h-7 px-3 rounded-lg font-light text-xs border hover:shadow-sm transition-all duration-200"
+                            style={{ 
+                              borderColor: '#D8D5D2',
+                              color: '#3A3936',
+                              backgroundColor: '#FFFFFF'
+                            }}
+                          >
+                            <Plus className="w-3 h-3 mr-2" />
+                            Start New Job Description
+                          </Button>
+                        </div>
                       )}
                       
                       <p 
@@ -1009,7 +1281,13 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder={awaitingJDInput ? "Share your job brief, paste a link, or upload a file..." : "Ask me anything about jobs, CVs, or matches..."}
+                placeholder={
+                  awaitingJDInput 
+                    ? "Share your job brief, paste a link, or upload a file..." 
+                    : awaitingFollowUp
+                    ? "Answer the follow-up questions..."
+                    : "Ask me anything about jobs, CVs, or matches..."
+                }
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -1109,8 +1387,26 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
               className="text-xs font-light"
               style={{ color: '#66615C' }}
             >
-              {awaitingJDInput ? 'Share your job details, upload file, or paste URL' : 'Press Enter to send, Shift+Enter for new line'}
+              {awaitingJDInput 
+                ? 'Share your job details, upload file, or paste URL' 
+                : awaitingFollowUp
+                ? 'Answer the follow-up questions to improve your job description'
+                : 'Press Enter to send, Shift+Enter for new line'}
             </p>
+
+            {/* New JD Button - Show when we have a current JD */}
+            {currentJDData && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleStartNewJD}
+                className="h-6 px-2 rounded-md font-light hover:shadow-sm transition-all duration-200 text-xs"
+                style={{ color: '#D5765B' }}
+              >
+                <Plus className="w-2.5 h-2.5 mr-1" />
+                New JD
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -194,3 +194,40 @@ export function getInputTypeDescription(detection: JDInputDetection): string {
 export function isDetectionReliable(detection: JDInputDetection): boolean {
   return detection.confidence >= 0.7;
 }
+
+// Get follow-up questions based on input type and content
+export function getFollowUpQuestions(parsedInput: JDInputDetection): string[] {
+  const questions: string[] = [];
+  
+  if (parsedInput.type === 'briefOnly' || parsedInput.type === 'briefWithLink') {
+    const content = parsedInput.brief?.toLowerCase() || '';
+    
+    // Check for missing key information
+    if (!content.includes('location') && !content.includes('remote') && !content.includes('hybrid')) {
+      questions.push('What is the location for this role? (e.g., remote, specific city, hybrid)');
+    }
+    
+    if (!content.includes('contract') && !content.includes('full-time') && !content.includes('part-time')) {
+      questions.push('What type of contract is this? (e.g., full-time, part-time, consultant)');
+    }
+    
+    if (!content.includes('experience') && !content.includes('years')) {
+      questions.push('What level of experience is required for this role?');
+    }
+    
+    if (!content.includes('organization') && !content.includes('company') && parsedInput.type !== 'briefWithLink') {
+      questions.push('What organization is this role for?');
+    }
+    
+    if (!content.includes('salary') && !content.includes('compensation') && !content.includes('pay')) {
+      questions.push('Is there a salary range for this position? (optional)');
+    }
+    
+    if (!content.includes('deadline') && !content.includes('apply by')) {
+      questions.push('Is there an application deadline for this role?');
+    }
+  }
+  
+  // Limit to top 3 questions
+  return questions.slice(0, 3);
+}

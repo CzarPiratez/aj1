@@ -39,7 +39,9 @@ export function containsJobKeywords(text: string): boolean {
   const jobKeywords = [
     'role', 'position', 'job', 'responsibilities', 'experience', 'skills', 
     'qualifications', 'requirements', 'coordinator', 'manager', 'officer',
-    'specialist', 'consultant', 'director', 'assistant', 'analyst'
+    'specialist', 'consultant', 'director', 'assistant', 'analyst',
+    'program', 'project', 'lead', 'head', 'chief', 'supervisor',
+    'humanitarian', 'development', 'nonprofit', 'ngo', 'organization'
   ];
   
   const textLower = text.toLowerCase();
@@ -136,8 +138,16 @@ export function getFollowUpQuestions(parsedInput: ParsedJDInput): string[] {
     if (!content.includes('organization') && !content.includes('company') && parsedInput.type !== 'briefWithLink') {
       questions.push('What organization is this role for?');
     }
+    
+    if (!content.includes('salary') && !content.includes('compensation') && !content.includes('pay')) {
+      questions.push('Is there a salary range for this position?');
+    }
+    
+    if (!content.includes('deadline') && !content.includes('apply by')) {
+      questions.push('Is there an application deadline for this role?');
+    }
   }
   
-  // Limit to top 2 questions
-  return questions.slice(0, 2);
+  // Limit to top 3 questions
+  return questions.slice(0, 3);
 }

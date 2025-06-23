@@ -1,6 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle, RefreshCw, Brain } from 'lucide-react';
+import { 
+  Brain, 
+  RefreshCw, 
+  AlertTriangle, 
+  Clock, 
+  CheckCircle,
+  ArrowRight
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -17,7 +24,7 @@ export function AIFallbackNotification({
   isRetrying = false,
   message 
 }: AIFallbackNotificationProps) {
-  const defaultMessage = "Looks like AI is temporarily offline — but don't worry, your job brief has been saved. You can continue drafting manually, or take a short break while we reconnect.\n\nThis happens rarely, and we'll notify you once everything's running smoothly again.";
+  const defaultMessage = "It looks like my AI assistant is currently busy helping others — we're hitting a temporary limit. But don't worry — your input is saved, and I'll be ready to resume shortly.\n\nYou can try again in a few minutes, or continue drafting manually if you'd like.";
 
   return (
     <motion.div
