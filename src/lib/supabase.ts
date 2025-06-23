@@ -108,7 +108,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 });
 
-// Database types
+// Database types (cleaned up - removed Job and Application interfaces)
 export interface User {
   id: string;
   email: string;
@@ -134,50 +134,8 @@ export interface UserProgressFlags {
   has_analyzed_cv: boolean;
   has_selected_job: boolean;
   has_written_cover_letter: boolean;
-  has_published_job: boolean;
-  has_applied_to_job: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export interface Job {
-  id: string;
-  user_id: string;
-  title: string;
-  description: string;
-  organization_name?: string;
-  organization_url?: string;
-  org_name?: string;
-  org_website?: string;
-  responsibilities?: string;
-  qualifications?: string;
-  sdgs?: string[];
-  sector?: string;
-  contract_type?: string;
-  location?: string;
-  how_to_apply?: string;
-  application_end_date?: string;
-  status: 'draft' | 'published' | 'archived';
-  published_at?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Application {
-  id: string;
-  user_id: string;
-  job_id: string;
-  status: 'pending' | 'reviewed' | 'accepted' | 'rejected' | 'withdrawn';
-  cover_letter?: string;
-  additional_notes?: string;
-  applied_at: string;
-  reviewed_at?: string;
-  created_at: string;
-  updated_at: string;
-  
-  // Joined data (when querying with joins)
-  job?: Job;
-  user?: User;
 }
 
 export interface Conversation {

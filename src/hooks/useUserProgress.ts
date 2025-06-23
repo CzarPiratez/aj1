@@ -6,8 +6,6 @@ export interface UserProgressFlags {
   has_analyzed_cv: boolean;
   has_selected_job: boolean;
   has_written_cover_letter: boolean;
-  has_published_job: boolean;
-  has_applied_to_job: boolean;
 }
 
 const defaultFlags: UserProgressFlags = {
@@ -15,8 +13,6 @@ const defaultFlags: UserProgressFlags = {
   has_analyzed_cv: false,
   has_selected_job: false,
   has_written_cover_letter: false,
-  has_published_job: false,
-  has_applied_to_job: false,
 };
 
 export function useUserProgress(userId?: string) {
@@ -61,7 +57,6 @@ export function useUserProgress(userId?: string) {
       if (!existingProgress) {
         console.log('📝 Creating progress record for user:', userId);
         
-        // Create a record with only the columns we know exist
         const { error: createError } = await supabase
           .from('user_progress_flags')
           .insert({
@@ -70,8 +65,6 @@ export function useUserProgress(userId?: string) {
             has_analyzed_cv: false,
             has_selected_job: false,
             has_written_cover_letter: false,
-            has_published_job: false,
-            has_applied_to_job: false,
           });
 
         if (createError) {
@@ -116,9 +109,7 @@ export function useUserProgress(userId?: string) {
           has_uploaded_cv, 
           has_analyzed_cv, 
           has_selected_job, 
-          has_written_cover_letter, 
-          has_published_job, 
-          has_applied_to_job
+          has_written_cover_letter
         `)
         .eq('user_id', userId)
         .single();
@@ -133,8 +124,6 @@ export function useUserProgress(userId?: string) {
           has_analyzed_cv: data.has_analyzed_cv || false,
           has_selected_job: data.has_selected_job || false,
           has_written_cover_letter: data.has_written_cover_letter || false,
-          has_published_job: data.has_published_job || false,
-          has_applied_to_job: data.has_applied_to_job || false,
         });
       }
     } catch (error) {
@@ -262,8 +251,6 @@ export function useUserProgress(userId?: string) {
         has_analyzed_cv: false,
         has_selected_job: false,
         has_written_cover_letter: false,
-        has_published_job: false,
-        has_applied_to_job: false,
       };
 
       const { error } = await supabase

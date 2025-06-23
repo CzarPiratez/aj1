@@ -126,9 +126,9 @@ export function CategorizedToolDropdowns({
       label: 'Explore Similar Roles',
       icon: RotateCcw,
       description: 'Discover alternative career paths and opportunities',
-      isActive: (flags) => flags.has_applied_to_job,
-      inactiveMessage: "Once you've applied to a job, I can suggest similar roles and alternative career paths. Let's get your first application submitted!",
-      action: () => onToolAction('explore-similar-roles', 'Show me similar roles and alternative career paths')
+      isActive: () => true,
+      inactiveMessage: '',
+      action: () => onToolAction('explore-similar-roles', 'I can help you explore similar roles and alternative career paths. What kind of roles are you interested in?')
     },
     {
       id: 'skill-gaps-upskill',
@@ -152,25 +152,13 @@ export function CategorizedToolDropdowns({
       action: () => onToolAction('generate-org-profile', 'Help me create an organization profile')
     },
     {
-      id: 'post-job-generate-jd',
-      label: 'Post a Job / Generate JD',
-      icon: Briefcase,
-      description: 'Generate a high-quality job description using AI.',
-      isActive: () => true,
-      inactiveMessage: '',
-      action: () => {
-        // Show construction message instead of triggering JD flow
-        onToolAction('post-job-generate-jd', '🚧 This feature is currently under construction. Please check back later!');
-      }
-    },
-    {
       id: 'match-candidates',
       label: 'Match Candidates',
       icon: Users,
       description: 'Find the best candidates for your posted jobs',
-      isActive: (flags) => flags.has_published_job,
-      inactiveMessage: "Once you've published a job, I can help you find and match the best candidates. Let's start by creating your job posting!",
-      action: () => onToolAction('match-candidates', 'Help me find and match candidates to my job posting')
+      isActive: () => false,
+      inactiveMessage: "🚧 This feature is currently under construction. Please check back later!",
+      action: () => onToolAction('match-candidates', '🚧 This feature is currently under construction. Please check back later!')
     }
   ];
 
