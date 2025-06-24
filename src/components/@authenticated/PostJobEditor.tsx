@@ -21,7 +21,12 @@ import {
   Plus,
   X,
   ExternalLink,
-  Loader2
+  Loader2,
+  Share2,
+  Mail,
+  Copy,
+  Linkedin,
+  MessageCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,8 +36,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from '@/lib/supabase';
 import { useUserProgress } from '@/hooks/useUserProgress';
 import { toast } from 'sonner';
@@ -55,12 +66,8 @@ interface JDSection {
 
 export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJobEditorProps) {
   const [sections, setSections] = useState<JDSection[]>([]);
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isDraft, setIsDraft] = useState(true);
-  const [selectedTone, setSelectedTone] = useState<string>('professional');
-  const [readabilityScore, setReadabilityScore] = useState(85);
-  const [deiScore, setDeiScore] = useState(92);
   const [draggedSection, setDraggedSection] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -206,9 +213,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         draft_status: 'draft',
         ai_generated: true,
         generation_metadata: {
-          tone: selectedTone,
-          readability_score: readabilityScore,
-          dei_score: deiScore,
           sections_count: sections.length,
           generated_at: new Date().toISOString()
         },
@@ -304,9 +308,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         source_draft_id: draftId,
         ai_generated: true,
         generation_metadata: {
-          tone: selectedTone,
-          readability_score: readabilityScore,
-          dei_score: deiScore,
           sections_count: sections.length,
           published_from_editor: true,
           published_at: new Date().toISOString()
@@ -349,12 +350,43 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     }
   };
 
-  const openPreviewModal = () => {
-    setShowPreviewModal(true);
+  const handleCopyText = () => {
+    // Compile sections back into full JD content
+    const fullContent = sections
+      .sort((a, b) => a.order - b.order)
+      .map(section => `# ${section.title}\n\n${section.content}`)
+      .join('\n\n');
+    
+    navigator.clipboard.writeText(fullContent);
+    toast.success('Job description copied to clipboard');
   };
 
-  const closePreviewModal = () => {
-    setShowPreviewModal(false);
+  const handleCopyLink = () => {
+    // In a real implementation, this would copy a shareable link
+    navigator.clipboard.writeText('https://aidjobs.com/jobs/share/123456');
+    toast.success('Shareable link copied to clipboard');
+  };
+
+  const handleShareViaEmail = () => {
+    // Extract job title for email subject
+    const titleSection = sections.find(s => s.title.toLowerCase().includes('title') || s.order === 0);
+    const title = titleSection?.content.split('\n')[0] || 'Job Opportunity';
+    
+    // Create mailto link
+    const subject = encodeURIComponent(`Job Opportunity: ${title}`);
+    const body = encodeURIComponent('I found this job opportunity that might interest you.');
+    window.open(`mailto:?subject=${subject}&body=${body}`);
+  };
+
+  const handleShareViaWhatsApp = () => {
+    // In a real implementation, this would share via WhatsApp
+    const text = encodeURIComponent('Check out this job opportunity!');
+    window.open(`https://wa.me/?text=${text}`);
+  };
+
+  const handleShareViaLinkedIn = () => {
+    // In a real implementation, this would share via LinkedIn
+    window.open('https://www.linkedin.com/sharing/share-offsite/');
   };
 
   // Show placeholder when no JD is generated yet
@@ -441,307 +473,251 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             </div>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsPreviewMode(!isPreviewMode)}
-              className="h-8"
-            >
-              <Eye className="w-4 h-4 mr-2" />
-              {isPreviewMode ? 'Edit' : 'Preview'}
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={openPreviewModal}
-              className="h-8"
-            >
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Preview Modal
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => saveDraft()}
-              className="h-8"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
+          <TooltipProvider delayDuration={300}>
+            <div className="flex items-center space-x-2">
+              {/* Preview Icon */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowPreviewModal(true)}
+                    className="h-8 w-8 rounded-lg shadow-sm"
+                    style={{ color: '#66615C' }}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  Preview JD
+                </TooltipContent>
+              </Tooltip>
+              
+              {/* Share Icon (Dropdown) */}
+              <DropdownMenu>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg shadow-sm"
+                        style={{ color: '#66615C' }}
+                      >
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    Share JD
+                  </TooltipContent>
+                </Tooltip>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={handleShareViaWhatsApp}>
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    <span>WhatsApp</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareViaLinkedIn}>
+                    <Linkedin className="w-4 h-4 mr-2" />
+                    <span>LinkedIn</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCopyLink}>
+                    <Link className="w-4 h-4 mr-2" />
+                    <span>Copy Link</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShareViaEmail}>
+                    <Mail className="w-4 h-4 mr-2" />
+                    <span>Email</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleCopyText}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    <span>Copy Text</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Save Draft Icon */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => saveDraft()}
+                    className="h-8 w-8 rounded-lg shadow-sm"
+                    style={{ color: '#66615C' }}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
                   Save Draft
-                </>
-              )}
-            </Button>
-            
-            <Button
-              size="sm"
-              onClick={publishJob}
-              className="h-8 text-white"
-              style={{ backgroundColor: '#D5765B' }}
-              disabled={isPublishing}
-            >
-              {isPublishing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Publishing...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
+                </TooltipContent>
+              </Tooltip>
+              
+              {/* Publish Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    onClick={publishJob}
+                    className="h-8 px-3 text-white rounded-lg shadow-sm"
+                    style={{ backgroundColor: '#D5765B' }}
+                    disabled={isPublishing}
+                  >
+                    {isPublishing ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 mr-2" />
+                    )}
+                    Publish
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
                   Publish Job
-                </>
-              )}
-            </Button>
-          </div>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
         </div>
       </div>
-
-      {/* AI Enhancement Controls */}
-      {!isPreviewMode && (
-        <div className="border-b p-4 space-y-4" style={{ borderColor: '#D8D5D2' }}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Tone Control */}
-            <div>
-              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
-                Tone Setting
-              </Label>
-              <Select value={selectedTone} onValueChange={setSelectedTone}>
-                <SelectTrigger className="h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="professional">Professional</SelectItem>
-                  <SelectItem value="inspiring">Inspiring</SelectItem>
-                  <SelectItem value="conversational">Conversational</SelectItem>
-                  <SelectItem value="formal">Formal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Readability Score */}
-            <div>
-              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
-                Readability Score
-              </Label>
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 h-2 bg-gray-200 rounded-full">
-                  <div 
-                    className="h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${readabilityScore}%`,
-                      backgroundColor: readabilityScore > 80 ? '#10B981' : readabilityScore > 60 ? '#F59E0B' : '#EF4444'
-                    }}
-                  />
-                </div>
-                <span className="text-xs font-medium" style={{ color: '#3A3936' }}>
-                  {readabilityScore}%
-                </span>
-              </div>
-            </div>
-
-            {/* DEI Score */}
-            <div>
-              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
-                DEI Score
-              </Label>
-              <div className="flex items-center space-x-2">
-                <div className="flex-1 h-2 bg-gray-200 rounded-full">
-                  <div 
-                    className="h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${deiScore}%`,
-                      backgroundColor: deiScore > 85 ? '#10B981' : deiScore > 70 ? '#F59E0B' : '#EF4444'
-                    }}
-                  />
-                </div>
-                <span className="text-xs font-medium" style={{ color: '#3A3936' }}>
-                  {deiScore}%
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Content */}
       <ScrollArea className="flex-1">
         <div className="p-6 max-w-4xl mx-auto">
-          <AnimatePresence mode="wait">
-            {isPreviewMode ? (
-              <motion.div
-                key="preview"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-              >
-                {/* Preview Mode */}
-                <Card className="border-0 shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="prose prose-sm max-w-none">
-                      {sections
-                        .sort((a, b) => a.order - b.order)
-                        .map((section) => (
-                          <div key={section.id} className="mb-6">
-                            <h3 
-                              className="text-lg font-medium mb-3"
-                              style={{ color: '#3A3936' }}
-                            >
-                              {section.title}
-                            </h3>
-                            <div 
-                              className="whitespace-pre-wrap font-light leading-relaxed"
-                              style={{ color: '#66615C' }}
-                            >
-                              {section.content}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="edit"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="space-y-4"
-              >
-                {/* Edit Mode - Section-based editing with drag and drop */}
-                {sections
-                  .sort((a, b) => a.order - b.order)
-                  .map((section, index) => (
-                    <motion.div
-                      key={section.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      draggable
-                      onDragStart={() => setDraggedSection(section.id)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (draggedSection && draggedSection !== section.id) {
-                          const dragIndex = sections.findIndex(s => s.id === draggedSection);
-                          const hoverIndex = sections.findIndex(s => s.id === section.id);
-                          reorderSections(dragIndex, hoverIndex);
-                        }
-                        setDraggedSection(null);
-                      }}
-                      className="cursor-move"
-                    >
-                      <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <GripVertical className="w-4 h-4" style={{ color: '#66615C' }} />
-                              <CardTitle className="text-base" style={{ color: '#3A3936' }}>
-                                {section.isEditing ? (
-                                  <Input
-                                    value={section.title}
-                                    onChange={(e) => updateSectionContent(section.id, section.content)}
-                                    className="h-6 text-base font-medium"
-                                  />
-                                ) : (
-                                  section.title
-                                )}
-                              </CardTitle>
-                            </div>
-                            
-                            <div className="flex items-center space-x-2">
+          <motion.div
+            key="edit"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="space-y-4"
+          >
+            {/* Edit Mode - Section-based editing with drag and drop */}
+            {sections
+              .sort((a, b) => a.order - b.order)
+              .map((section, index) => (
+                <motion.div
+                  key={section.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  draggable
+                  onDragStart={() => setDraggedSection(section.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (draggedSection && draggedSection !== section.id) {
+                      const dragIndex = sections.findIndex(s => s.id === draggedSection);
+                      const hoverIndex = sections.findIndex(s => s.id === section.id);
+                      reorderSections(dragIndex, hoverIndex);
+                    }
+                    setDraggedSection(null);
+                  }}
+                  className="cursor-move"
+                >
+                  <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <GripVertical className="w-4 h-4" style={{ color: '#66615C' }} />
+                          <CardTitle className="text-base" style={{ color: '#3A3936' }}>
+                            {section.isEditing ? (
+                              <Input
+                                value={section.title}
+                                onChange={(e) => updateSectionContent(section.id, section.content)}
+                                className="h-6 text-base font-medium"
+                              />
+                            ) : (
+                              section.title
+                            )}
+                          </CardTitle>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleSectionLock(section.id)}
+                            className="h-6 w-6 p-0"
+                          >
+                            {section.isLocked ? (
+                              <Lock className="w-3 h-3" style={{ color: '#66615C' }} />
+                            ) : (
+                              <Unlock className="w-3 h-3" style={{ color: '#D5765B' }} />
+                            )}
+                          </Button>
+                          
+                          {!section.isLocked && (
+                            <>
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => toggleSectionLock(section.id)}
-                                className="h-6 w-6 p-0"
+                                onClick={() => toggleSectionEdit(section.id)}
+                                className="h-6 px-2 text-xs"
                               >
-                                {section.isLocked ? (
-                                  <Lock className="w-3 h-3" style={{ color: '#66615C' }} />
-                                ) : (
-                                  <Unlock className="w-3 h-3" style={{ color: '#D5765B' }} />
-                                )}
+                                <Edit3 className="w-3 h-3 mr-1" />
+                                {section.isEditing ? 'Done' : 'Edit'}
                               </Button>
                               
-                              {!section.isLocked && (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => toggleSectionEdit(section.id)}
-                                    className="h-6 px-2 text-xs"
-                                  >
-                                    <Edit3 className="w-3 h-3 mr-1" />
-                                    {section.isEditing ? 'Done' : 'Edit'}
-                                  </Button>
-                                  
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleRefineWithAI(section.id, section.title)}
-                                    className="h-6 px-2 text-xs"
-                                    style={{ color: '#D5765B' }}
-                                  >
-                                    <Wand2 className="w-3 h-3 mr-1" />
-                                    Refine with AI
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                        
-                        <CardContent className="pt-0">
-                          {section.isEditing ? (
-                            <Textarea
-                              value={section.content}
-                              onChange={(e) => updateSectionContent(section.id, e.target.value)}
-                              className="min-h-[120px] font-light leading-relaxed"
-                              style={{ color: '#3A3936' }}
-                            />
-                          ) : (
-                            <div 
-                              className={`whitespace-pre-wrap font-light leading-relaxed p-3 rounded-lg ${
-                                section.isLocked ? 'bg-gray-50' : 'bg-transparent'
-                              }`}
-                              style={{ color: section.isLocked ? '#66615C' : '#3A3936' }}
-                            >
-                              {section.content}
-                            </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRefineWithAI(section.id, section.title)}
+                                className="h-6 px-2 text-xs"
+                                style={{ color: '#D5765B' }}
+                              >
+                                <Wand2 className="w-3 h-3 mr-1" />
+                                Refine with AI
+                              </Button>
+                            </>
                           )}
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-
-                {/* Add Section Button */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: sections.length * 0.1 + 0.2 }}
-                >
-                  <Button
-                    variant="outline"
-                    onClick={addCustomSection}
-                    className="w-full h-12 border-dashed"
-                    style={{ borderColor: '#D5765B', color: '#D5765B' }}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Custom Section
-                  </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent className="pt-0">
+                      {section.isEditing ? (
+                        <Textarea
+                          value={section.content}
+                          onChange={(e) => updateSectionContent(section.id, e.target.value)}
+                          className="min-h-[120px] font-light leading-relaxed"
+                          style={{ color: '#3A3936' }}
+                        />
+                      ) : (
+                        <div 
+                          className={`whitespace-pre-wrap font-light leading-relaxed p-3 rounded-lg ${
+                            section.isLocked ? 'bg-gray-50' : 'bg-transparent'
+                          }`}
+                          style={{ color: section.isLocked ? '#66615C' : '#3A3936' }}
+                        >
+                          {section.content}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              ))}
+
+            {/* Add Section Button */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: sections.length * 0.1 + 0.2 }}
+            >
+              <Button
+                variant="outline"
+                onClick={addCustomSection}
+                className="w-full h-12 border-dashed"
+                style={{ borderColor: '#D5765B', color: '#D5765B' }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Custom Section
+              </Button>
+            </motion.div>
+          </motion.div>
         </div>
       </ScrollArea>
 
@@ -789,7 +765,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={closePreviewModal}
+                  onClick={() => setShowPreviewModal(false)}
                   className="h-6 w-6 p-0"
                 >
                   <X className="w-4 h-4" />
@@ -850,7 +826,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={closePreviewModal}
+                    onClick={() => setShowPreviewModal(false)}
                     className="h-8"
                   >
                     Close Preview
@@ -861,7 +837,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                     size="sm"
                     onClick={async () => {
                       await saveDraft();
-                      closePreviewModal();
+                      setShowPreviewModal(false);
                     }}
                     className="h-8"
                     disabled={isSaving}
@@ -883,7 +859,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                     size="sm"
                     onClick={() => {
                       publishJob();
-                      closePreviewModal();
+                      setShowPreviewModal(false);
                     }}
                     className="h-8 text-white"
                     style={{ backgroundColor: '#D5765B' }}
