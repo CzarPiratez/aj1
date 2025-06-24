@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import { clearAllAuthData } from '@/lib/authDebug';
 import { LandingPage } from '@/components/landing/LandingPage';
 import { AuthenticatedLayout } from '@/components/@authenticated/layout';
 import { Toaster } from 'sonner';
@@ -24,6 +25,26 @@ function App() {
         
         if (error) {
           console.error('❌ Supabase session error:', error);
+          
+          // Check for specific refresh token error
+          if (error.message && error.message.includes('Invalid Refresh Token: Refresh Token Not Found')) {
+            console.log('🧹 Detected stale refresh token, clearing auth data and reloading...');
+            
+            toast.error('Authentication session expired', {
+              description: 'Clearing stale data and reloading the application...',
+              duration: 3000,
+            });
+            
+            // Clear all stale authentication data
+            await clearAllAuthData();
+            
+            // Reload the page to start fresh
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+            
+            return;
+          }
           
           toast.error(`Supabase connection error: ${error.message}`, {
             description: 'Please check your environment variables and try refreshing the page.',
