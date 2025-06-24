@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from '@/components/@authenticated';
+import { MyJobsDashboard } from '@/components/@authenticated/jobs/MyJobsDashboard';
+import { PostJobEditor } from '@/components/@authenticated/PostJobEditor';
 
 export function Dashboard() {
   const [currentPage, setCurrentPage] = useState('workspace');
@@ -31,7 +33,32 @@ export function Dashboard() {
         setMainContent({
           type: 'jobs',
           title: 'My Jobs',
-          content: 'Job management dashboard'
+          content: 'Job management dashboard',
+          subType: 'all'
+        });
+        break;
+      case 'jobs-active':
+        setMainContent({
+          type: 'jobs',
+          title: 'Active Jobs',
+          content: 'Manage your published job postings',
+          subType: 'active'
+        });
+        break;
+      case 'jobs-archived':
+        setMainContent({
+          type: 'jobs',
+          title: 'Archived Jobs',
+          content: 'View your archived job postings',
+          subType: 'archived'
+        });
+        break;
+      case 'jobs-drafts':
+        setMainContent({
+          type: 'jobs',
+          title: 'Job Drafts',
+          content: 'Continue working on your draft job postings',
+          subType: 'drafts'
         });
         break;
       case 'notifications':
@@ -100,7 +127,17 @@ export function Dashboard() {
           style={{ backgroundColor: '#FFFFFF' }}
         >
           {mainContent ? (
-            <MainContentRenderer content={mainContent} />
+            mainContent.type === 'post-job-editor' ? (
+              <PostJobEditor 
+                generatedJD={mainContent.generatedJD}
+                activeTask={mainContent.activeTask}
+                step={mainContent.step}
+              />
+            ) : mainContent.type === 'jobs' ? (
+              <MyJobsDashboard subType={mainContent.subType} />
+            ) : (
+              <MainContentRenderer content={mainContent} />
+            )
           ) : (
             <AuthenticatedIndex />
           )}

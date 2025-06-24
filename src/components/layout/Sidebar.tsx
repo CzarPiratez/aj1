@@ -14,7 +14,11 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Bug
+  Bug,
+  ChevronDown,
+  Archive,
+  Edit3,
+  Send
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -23,6 +27,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AuthDebugModal } from '@/components/auth/AuthDebugModal';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 interface SidebarProps {
   currentPage: string;
@@ -54,7 +63,12 @@ const menuItems = [
     id: 'jobs', 
     label: 'My Jobs', 
     icon: Briefcase,
-    tooltip: 'Jobs you\'ve posted or applied to'
+    tooltip: 'Jobs you\'ve posted or applied to',
+    subItems: [
+      { id: 'jobs-active', label: 'Active Jobs', icon: Send },
+      { id: 'jobs-archived', label: 'Archived Jobs', icon: Archive },
+      { id: 'jobs-drafts', label: 'Job Drafts', icon: Edit3 }
+    ]
   },
   { 
     id: 'notifications', 
@@ -80,6 +94,9 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showAuthDebug, setShowAuthDebug] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
+    jobs: currentPage.startsWith('jobs-')
+  });
 
   const handleSignOut = async () => {
     try {
@@ -87,6 +104,13 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
     } catch (error) {
       console.error('Error signing out:', error);
     }
+  };
+
+  const toggleExpanded = (itemId: string) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
   };
 
   // Check if user should see debug option
@@ -234,89 +258,234 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
         <nav className="flex-1 p-2.5 space-y-0.5 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentPage === item.id;
+            const isActive = currentPage === item.id || 
+                            (item.subItems && item.subItems.some(subItem => currentPage === subItem.id));
+            const isExpanded = expandedItems[item.id];
             
-            const buttonContent = (
-              <motion.button
-                onClick={() => {
-                  onNavigate(item.id);
-                  if (isMobile) setIsMobileOpen(false);
-                }}
-                className={cn(
-                  'w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg text-left transition-all duration-200 relative group',
-                  isActive
-                    ? 'font-medium shadow-sm'
-                    : 'font-light hover:shadow-sm'
-                )}
-                style={{
-                  backgroundColor: isActive ? '#FBE4D5' : 'transparent',
-                  color: isActive ? '#3A3936' : '#66615C',
-                  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-                }}
-                whileHover={{ 
-                  backgroundColor: isActive ? '#FBE4D5' : '#FFFFFF',
-                  transition: { duration: 0.15 }
-                }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {/* Active indicator */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeTab"
-                    className="absolute left-0 top-0 w-1 h-full rounded-r-full"
-                    style={{ backgroundColor: '#D5765B' }}
-                    initial={false}
-                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                  />
-                )}
-                
-                <Icon 
-                  className="w-3.5 h-3.5 flex-shrink-0" 
-                  style={{ 
-                    color: isActive ? '#D5765B' : '#66615C'
-                  }}
-                />
-                <AnimatePresence>
-                  {(!isCollapsed || isMobile) && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="truncate text-xs"
-                    >
-                      {item.label}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </motion.button>
-            );
-
-            if (isCollapsed && !isMobile) {
-              return (
-                <Tooltip key={item.id}>
-                  <TooltipTrigger asChild>
-                    {buttonContent}
-                  </TooltipTrigger>
-                  <TooltipContent 
-                    side="right" 
-                    align="start"
-                    className="text-left max-w-xs"
+            // Render menu item with potential sub-items
+            return (
+              <div key={item.id}>
+                {item.subItems ? (
+                  // Collapsible menu item with sub-items
+                  <Collapsible
+                    open={isExpanded}
+                    onOpenChange={() => toggleExpanded(item.id)}
+                    className={cn(
+                      "w-full rounded-lg transition-all duration-200 relative",
+                      isActive ? "shadow-sm" : ""
+                    )}
                     style={{
-                      backgroundColor: '#3A3936',
-                      color: '#F9F7F4',
-                      border: 'none',
-                      padding: '8px 12px'
+                      backgroundColor: isActive ? '#FBE4D5' : 'transparent',
                     }}
                   >
-                    <div className="text-xs font-medium mb-1">{item.label}</div>
-                    <div className="text-xs opacity-90 leading-relaxed">{item.tooltip}</div>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
+                    <CollapsibleTrigger asChild>
+                      <motion.button
+                        className={cn(
+                          "w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-left transition-all duration-200 relative group",
+                          isActive ? "font-medium" : "font-light hover:shadow-sm"
+                        )}
+                        style={{
+                          color: isActive ? '#3A3936' : '#66615C',
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        }}
+                        whileHover={{ 
+                          backgroundColor: isActive ? '#FBE4D5' : '#FFFFFF',
+                          transition: { duration: 0.15 }
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {/* Active indicator */}
+                        {isActive && (
+                          <motion.div
+                            layoutId="activeTab"
+                            className="absolute left-0 top-0 w-1 h-full rounded-r-full"
+                            style={{ backgroundColor: '#D5765B' }}
+                            initial={false}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        )}
+                        
+                        <div className="flex items-center space-x-2">
+                          <Icon 
+                            className="w-3.5 h-3.5 flex-shrink-0" 
+                            style={{ 
+                              color: isActive ? '#D5765B' : '#66615C'
+                            }}
+                          />
+                          <AnimatePresence>
+                            {(!isCollapsed || isMobile) && (
+                              <motion.span
+                                initial={{ opacity: 0, width: 0 }}
+                                animate={{ opacity: 1, width: 'auto' }}
+                                exit={{ opacity: 0, width: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="truncate text-xs"
+                              >
+                                {item.label}
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        
+                        <AnimatePresence>
+                          {(!isCollapsed || isMobile) && (
+                            <motion.div
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: 'auto' }}
+                              exit={{ opacity: 0, width: 0 }}
+                              transition={{ duration: 0.2 }}
+                            >
+                              <ChevronDown 
+                                className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} 
+                                style={{ color: '#66615C' }}
+                              />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.button>
+                    </CollapsibleTrigger>
+                    
+                    <CollapsibleContent>
+                      <AnimatePresence>
+                        {(!isCollapsed || isMobile) && item.subItems && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="ml-5 mt-1 space-y-1"
+                          >
+                            {item.subItems.map(subItem => {
+                              const SubIcon = subItem.icon;
+                              const isSubActive = currentPage === subItem.id;
+                              
+                              return (
+                                <motion.button
+                                  key={subItem.id}
+                                  onClick={() => {
+                                    onNavigate(subItem.id);
+                                    if (isMobile) setIsMobileOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-left transition-all duration-200 relative group",
+                                    isSubActive ? "font-medium shadow-sm" : "font-light hover:shadow-sm"
+                                  )}
+                                  style={{
+                                    backgroundColor: isSubActive ? '#FFFFFF' : 'transparent',
+                                    color: isSubActive ? '#3A3936' : '#66615C',
+                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                                  }}
+                                  whileHover={{ 
+                                    backgroundColor: '#FFFFFF',
+                                    transition: { duration: 0.15 }
+                                  }}
+                                  whileTap={{ scale: 0.98 }}
+                                >
+                                  <SubIcon 
+                                    className="w-3 h-3 flex-shrink-0" 
+                                    style={{ 
+                                      color: isSubActive ? '#D5765B' : '#66615C'
+                                    }}
+                                  />
+                                  <span className="truncate text-xs">
+                                    {subItem.label}
+                                  </span>
+                                </motion.button>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : (
+                  // Regular menu item without sub-items
+                  (() => {
+                    const buttonContent = (
+                      <motion.button
+                        onClick={() => {
+                          onNavigate(item.id);
+                          if (isMobile) setIsMobileOpen(false);
+                        }}
+                        className={cn(
+                          'w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg text-left transition-all duration-200 relative group',
+                          isActive
+                            ? 'font-medium shadow-sm'
+                            : 'font-light hover:shadow-sm'
+                        )}
+                        style={{
+                          backgroundColor: isActive ? '#FBE4D5' : 'transparent',
+                          color: isActive ? '#3A3936' : '#66615C',
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+                        }}
+                        whileHover={{ 
+                          backgroundColor: isActive ? '#FBE4D5' : '#FFFFFF',
+                          transition: { duration: 0.15 }
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {/* Active indicator */}
+                        {isActive && (
+                          <motion.div
+                            layoutId="activeTab"
+                            className="absolute left-0 top-0 w-1 h-full rounded-r-full"
+                            style={{ backgroundColor: '#D5765B' }}
+                            initial={false}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        )}
+                        
+                        <Icon 
+                          className="w-3.5 h-3.5 flex-shrink-0" 
+                          style={{ 
+                            color: isActive ? '#D5765B' : '#66615C'
+                          }}
+                        />
+                        <AnimatePresence>
+                          {(!isCollapsed || isMobile) && (
+                            <motion.span
+                              initial={{ opacity: 0, width: 0 }}
+                              animate={{ opacity: 1, width: 'auto' }}
+                              exit={{ opacity: 0, width: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="truncate text-xs"
+                            >
+                              {item.label}
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+                      </motion.button>
+                    );
 
-            return <div key={item.id}>{buttonContent}</div>;
+                    if (isCollapsed && !isMobile) {
+                      return (
+                        <Tooltip key={item.id}>
+                          <TooltipTrigger asChild>
+                            {buttonContent}
+                          </TooltipTrigger>
+                          <TooltipContent 
+                            side="right" 
+                            align="start"
+                            className="text-left max-w-xs"
+                            style={{
+                              backgroundColor: '#3A3936',
+                              color: '#F9F7F4',
+                              border: 'none',
+                              padding: '8px 12px'
+                            }}
+                          >
+                            <div className="text-xs font-medium mb-1">{item.label}</div>
+                            <div className="text-xs opacity-90 leading-relaxed">{item.tooltip}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+
+                    return <div key={item.id}>{buttonContent}</div>;
+                  })()
+                )}
+              </div>
+            );
           })}
 
           {/* Auth Debug Button - only visible to authorized users */}

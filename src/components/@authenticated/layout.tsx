@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
 import { PostJobEditor } from './PostJobEditor';
+import { MyJobsDashboard } from './jobs/MyJobsDashboard';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
@@ -110,7 +111,32 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
         setMainContent({
           type: 'jobs',
           title: 'My Jobs',
-          content: 'Job management dashboard'
+          content: 'Job management dashboard',
+          subType: 'all'
+        });
+        break;
+      case 'jobs-active':
+        setMainContent({
+          type: 'jobs',
+          title: 'Active Jobs',
+          content: 'Manage your published job postings',
+          subType: 'active'
+        });
+        break;
+      case 'jobs-archived':
+        setMainContent({
+          type: 'jobs',
+          title: 'Archived Jobs',
+          content: 'View your archived job postings',
+          subType: 'archived'
+        });
+        break;
+      case 'jobs-drafts':
+        setMainContent({
+          type: 'jobs',
+          title: 'Job Drafts',
+          content: 'Continue working on your draft job postings',
+          subType: 'drafts'
         });
         break;
       case 'notifications':
@@ -218,6 +244,11 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
                     activeTask={mainContent.activeTask}
                     step={mainContent.step}
                     profile={profile}
+                  />
+                ) : mainContent.type === 'jobs' ? (
+                  <MyJobsDashboard 
+                    profile={profile}
+                    subType={mainContent.subType}
                   />
                 ) : (
                   <MainContentRenderer content={mainContent} />
