@@ -18,7 +18,9 @@ import {
   CheckCircle,
   AlertCircle,
   GripVertical,
-  Plus
+  Plus,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface PostJobEditorProps {
   generatedJD?: string;
@@ -49,6 +52,7 @@ interface JDSection {
 export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorProps) {
   const [sections, setSections] = useState<JDSection[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isDraft, setIsDraft] = useState(true);
   const [selectedTone, setSelectedTone] = useState<string>('professional');
   const [readabilityScore, setReadabilityScore] = useState(85);
@@ -175,6 +179,14 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
     setIsDraft(false);
   };
 
+  const openPreviewModal = () => {
+    setShowPreviewModal(true);
+  };
+
+  const closePreviewModal = () => {
+    setShowPreviewModal(false);
+  };
+
   // Show placeholder when no JD is generated yet
   if (!generatedJD || step !== 'generated') {
     return (
@@ -268,6 +280,16 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
             >
               <Eye className="w-4 h-4 mr-2" />
               {isPreviewMode ? 'Edit' : 'Preview'}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openPreviewModal}
+              className="h-8"
+            >
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Preview Modal
             </Button>
             
             <Button
@@ -548,6 +570,124 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-xl font-medium" style={{ color: '#3A3936' }}>
+                Job Description Preview
+              </DialogTitle>
+              <div className="flex items-center space-x-2">
+                <Badge 
+                  variant="outline"
+                  className="text-xs"
+                  style={{ borderColor: '#D5765B', color: '#D5765B' }}
+                >
+                  Final Preview
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={closePreviewModal}
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          
+          <ScrollArea className="max-h-[70vh] pr-4">
+            <div className="space-y-6">
+              {/* Modal Preview Content */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-lg border p-6"
+                style={{ borderColor: '#D8D5D2' }}
+              >
+                <div className="prose prose-sm max-w-none">
+                  {sections
+                    .sort((a, b) => a.order - b.order)
+                    .map((section, index) => (
+                      <motion.div 
+                        key={section.id} 
+                        className="mb-6"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                      >
+                        <h3 
+                          className="text-lg font-medium mb-3 border-b pb-2"
+                          style={{ 
+                            color: '#3A3936',
+                            borderColor: '#F1EFEC'
+                          }}
+                        >
+                          {section.title}
+                        </h3>
+                        <div 
+                          className="whitespace-pre-wrap font-light leading-relaxed"
+                          style={{ color: '#66615C' }}
+                        >
+                          {section.content}
+                        </div>
+                      </motion.div>
+                    ))}
+                </div>
+              </motion.div>
+
+              {/* Modal Footer with Actions */}
+              <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: '#D8D5D2' }}>
+                <div className="flex items-center space-x-4 text-xs" style={{ color: '#66615C' }}>
+                  <span>Sections: {sections.length}</span>
+                  <span>Words: ~{sections.reduce((acc, section) => acc + section.content.split(' ').length, 0)}</span>
+                  <span>Reading time: ~{Math.ceil(sections.reduce((acc, section) => acc + section.content.split(' ').length, 0) / 200)} min</span>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={closePreviewModal}
+                    className="h-8"
+                  >
+                    Close Preview
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      saveDraft();
+                      closePreviewModal();
+                    }}
+                    className="h-8"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Draft
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      publishJob();
+                      closePreviewModal();
+                    }}
+                    className="h-8 text-white"
+                    style={{ backgroundColor: '#D5765B' }}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    Publish Job
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
