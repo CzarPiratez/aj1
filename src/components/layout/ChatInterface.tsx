@@ -164,7 +164,7 @@ Which option works best for you? Just type **1**, **2**, or **3**.`,
 
   // Handle JD Generation Flow
   const handleJDGenerationFlow = async (userInput: string) => {
-    const input = userInput.trim();
+    const input = userInput?.trim() || '';
     
     if (jdGenerationStep === 'initial-choice') {
       if (input === '1') {
@@ -240,7 +240,7 @@ Which would you like to use?`,
         return true;
       }
     } else if (jdGenerationStep === 'collecting-brief-link') {
-      // Extract information from user input
+      // Extract information from user input with safe access
       const roleTitleMatch = input.match(/role title:?\s*([^\n]+)/i) || 
                             input.match(/title:?\s*([^\n]+)/i) ||
                             input.match(/^([^:\n]+)/i);
@@ -252,10 +252,10 @@ Which would you like to use?`,
                                   input.match(/website:?\s*([^\n]+)/i) ||
                                   input.match(/https?:\/\/[^\s]+/i);
       
-      // Set extracted information
-      const roleTitle = roleTitleMatch ? roleTitleMatch[1].trim() : '';
-      const briefDescription = briefDescriptionMatch ? briefDescriptionMatch[1].trim() : input;
-      const organizationUrl = organizationUrlMatch ? organizationUrlMatch[1].trim() : '';
+      // Set extracted information with safe access using optional chaining
+      const roleTitle = roleTitleMatch?.[1]?.trim() || '';
+      const briefDescription = briefDescriptionMatch?.[1]?.trim() || input;
+      const organizationUrl = organizationUrlMatch?.[1]?.trim() || '';
       
       setJdRoleTitle(roleTitle);
       setJdBriefDescription(briefDescription);
@@ -339,7 +339,7 @@ What would you prefer?`,
       }
       return true;
     } else if (jdGenerationStep === 'collecting-brief-only') {
-      // Extract information from user input
+      // Extract information from user input with safe access
       const orgNameMatch = input.match(/organization(?:\s+name)?:?\s*([^\n]+)/i);
       const roleTitleMatch = input.match(/role title:?\s*([^\n]+)/i) || 
                             input.match(/title:?\s*([^\n]+)/i);
@@ -350,12 +350,12 @@ What would you prefer?`,
       
       const locationMatch = input.match(/location(?:\s+and\s+contract\s+type)?:?\s*([^\n]+)/i);
       
-      // Set extracted information
-      const organizationName = orgNameMatch ? orgNameMatch[1].trim() : '';
-      const roleTitle = roleTitleMatch ? roleTitleMatch[1].trim() : '';
-      const responsibilities = responsibilitiesMatch ? responsibilitiesMatch[1].trim() : '';
-      const qualifications = qualificationsMatch ? qualificationsMatch[1].trim() : '';
-      const locationAndType = locationMatch ? locationMatch[1].trim() : '';
+      // Set extracted information with safe access using optional chaining
+      const organizationName = orgNameMatch?.[1]?.trim() || '';
+      const roleTitle = roleTitleMatch?.[1]?.trim() || '';
+      const responsibilities = responsibilitiesMatch?.[1]?.trim() || '';
+      const qualifications = qualificationsMatch?.[1]?.trim() || '';
+      const locationAndType = locationMatch?.[1]?.trim() || '';
       
       setJdOrganizationName(organizationName);
       setJdRoleTitle(roleTitle);

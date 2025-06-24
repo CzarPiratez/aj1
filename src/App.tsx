@@ -46,6 +46,26 @@ function App() {
             return;
           }
           
+          // Check for Failed to fetch error
+          if (error.message && error.message.includes('Failed to fetch')) {
+            console.log('🧹 Detected network/fetch error, clearing auth data and reloading...');
+            
+            toast.error('Network connection error', {
+              description: 'Clearing stale data and reloading the application...',
+              duration: 3000,
+            });
+            
+            // Clear all stale authentication data
+            await clearAllAuthData();
+            
+            // Reload the page to start fresh
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
+            
+            return;
+          }
+          
           toast.error(`Supabase connection error: ${error.message}`, {
             description: 'Please check your environment variables and try refreshing the page.',
             duration: 10000,
@@ -62,6 +82,27 @@ function App() {
         
         // Show detailed error message to user
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+        
+        // Check for Failed to fetch in catch block as well
+        if (errorMessage.includes('Failed to fetch')) {
+          console.log('🧹 Detected network/fetch error in catch, clearing auth data and reloading...');
+          
+          toast.error('Network connection error', {
+            description: 'Clearing stale data and reloading the application...',
+            duration: 3000,
+          });
+          
+          // Clear all stale authentication data
+          await clearAllAuthData();
+          
+          // Reload the page to start fresh
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+          
+          return;
+        }
+        
         toast.error('Failed to connect to Supabase', {
           description: `Error: ${errorMessage}. Please check the console for more details and verify your Supabase configuration.`,
           duration: 15000,
