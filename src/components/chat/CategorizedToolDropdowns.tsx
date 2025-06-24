@@ -27,7 +27,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { UserProgressFlags } from '@/hooks/useUserProgress';
 
@@ -151,8 +151,7 @@ export function CategorizedToolDropdowns({
       isActive: () => true,
       inactiveMessage: '',
       action: () => {
-        // Phase 1: Trigger the initial AI message for JD generation
-        onToolAction('post-job-generate-jd', 'START_JD_GENERATION');
+        onToolAction('post-job-generate-jd', 'I want to create a job description with AI assistance')
       }
     },
     {
