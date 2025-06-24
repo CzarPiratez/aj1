@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
+import { PostJobEditor } from './PostJobEditor';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { GripVertical } from 'lucide-react';
@@ -211,7 +212,15 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               style={{ backgroundColor: '#FFFFFF' }}
             >
               {mainContent ? (
-                <MainContentRenderer content={mainContent} />
+                mainContent.type === 'post-job-editor' ? (
+                  <PostJobEditor 
+                    generatedJD={mainContent.generatedJD}
+                    activeTask={mainContent.activeTask}
+                    step={mainContent.step}
+                  />
+                ) : (
+                  <MainContentRenderer content={mainContent} />
+                )
               ) : (
                 <AuthenticatedIndex profile={profile} />
               )}

@@ -586,6 +586,167 @@ ${currentInterests}`;
   return response.content;
 }
 
+// Phase 1: New JD Generation Functions
+
+// Generate JD from brief text description
+export async function generateJDFromBrief(
+  roleTitle: string,
+  briefDescription: string,
+  organizationInfo: string
+): Promise<string> {
+  const systemPrompt = `You are an AI expert in creating compelling job descriptions for the nonprofit and development sector. Create a comprehensive, well-structured job description that:
+
+- Uses clear, engaging language
+- Highlights the mission impact of the role
+- Includes all standard JD sections (overview, responsibilities, qualifications, etc.)
+- Uses inclusive language and avoids bias
+- Balances professionalism with warmth appropriate for the nonprofit sector
+- Formats the content with Markdown for readability
+
+Structure the JD with these sections:
+1. Job title as a main heading
+2. About the organization
+3. Role overview
+4. Key responsibilities
+5. Required qualifications
+6. Preferred qualifications (if applicable)
+7. What we offer (benefits, work environment)
+8. How to apply (if provided)`;
+
+  const userPrompt = `Please create a job description based on:
+
+ROLE TITLE:
+${roleTitle}
+
+BRIEF DESCRIPTION:
+${briefDescription}
+
+ORGANIZATION INFO:
+${organizationInfo}`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.7, 
+    max_tokens: 3000 
+  });
+
+  return response.content;
+}
+
+// Extract information from a website URL
+export async function extractInfoFromURL(
+  url: string,
+  roleTitle: string,
+  additionalContext?: string
+): Promise<{
+  organizationName: string;
+  missionStatement: string;
+  values: string[];
+  extractedContent: string;
+}> {
+  // In a real implementation, this would use a web scraping service
+  // For now, we'll simulate the extraction
+  
+  console.log(`Extracting info from URL: ${url} for role: ${roleTitle}`);
+  
+  // Simulated response
+  return {
+    organizationName: "Example Nonprofit Organization",
+    missionStatement: "Dedicated to creating sustainable solutions for communities in need",
+    values: ["Integrity", "Collaboration", "Innovation", "Impact"],
+    extractedContent: "Example Nonprofit Organization is dedicated to creating sustainable solutions for communities in need. Our work focuses on education, healthcare, and environmental sustainability. We believe in the power of collaboration and innovation to drive meaningful change."
+  };
+}
+
+// Analyze uploaded JD file
+export async function analyzeUploadedJD(
+  fileContent: string,
+  fileName: string
+): Promise<{
+  extractedTitle: string;
+  extractedOrg: string;
+  analyzedContent: string;
+  suggestions: string[];
+}> {
+  const systemPrompt = `You are an AI expert in analyzing job descriptions for the nonprofit sector. Analyze the provided job description file and extract key information:
+
+1. The job title
+2. The organization name
+3. A summary of the JD content
+4. Specific suggestions for improvement
+
+Focus on making the JD more compelling, inclusive, and effective for attracting top nonprofit talent.`;
+
+  const userPrompt = `Please analyze this job description file:
+
+FILENAME: ${fileName}
+
+CONTENT:
+${fileContent}`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.5, 
+    max_tokens: 2000 
+  });
+
+  // In a real implementation, this would parse the AI response
+  // For now, we'll return simulated data
+  return {
+    extractedTitle: "Program Manager",
+    extractedOrg: "Example Nonprofit",
+    analyzedContent: response.content,
+    suggestions: [
+      "Add more specific impact metrics",
+      "Include information about team structure",
+      "Clarify remote work policy",
+      "Add more details about the application process"
+    ]
+  };
+}
+
+// Refine a specific JD section
+export async function refineJDSection(
+  sectionTitle: string,
+  sectionContent: string,
+  refinementInstructions: string
+): Promise<string> {
+  const systemPrompt = `You are an AI expert in refining job descriptions for the nonprofit sector. Focus specifically on improving the requested section while maintaining the overall tone and purpose of the job description.
+
+Follow these guidelines:
+- Address the specific refinement instructions provided
+- Maintain or enhance clarity and readability
+- Use inclusive, unbiased language
+- Keep the content authentic and appropriate for the nonprofit sector
+- Preserve any key information from the original content
+- Format with appropriate Markdown if needed`;
+
+  const userPrompt = `Please refine this job description section:
+
+SECTION TITLE:
+${sectionTitle}
+
+CURRENT CONTENT:
+${sectionContent}
+
+REFINEMENT INSTRUCTIONS:
+${refinementInstructions}`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.7, 
+    max_tokens: 2000 
+  });
+
+  return response.content;
+}
+
 // Enhanced General AI Chat Assistant
 export async function generateChatResponse(
   userMessage: string,

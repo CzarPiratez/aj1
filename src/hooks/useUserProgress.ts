@@ -6,6 +6,10 @@ export interface UserProgressFlags {
   has_analyzed_cv: boolean;
   has_selected_job: boolean;
   has_written_cover_letter: boolean;
+  has_started_jd: boolean;
+  has_submitted_jd_inputs: boolean;
+  has_generated_jd: boolean;
+  jd_generation_failed: boolean;
 }
 
 const defaultFlags: UserProgressFlags = {
@@ -13,6 +17,10 @@ const defaultFlags: UserProgressFlags = {
   has_analyzed_cv: false,
   has_selected_job: false,
   has_written_cover_letter: false,
+  has_started_jd: false,
+  has_submitted_jd_inputs: false,
+  has_generated_jd: false,
+  jd_generation_failed: false,
 };
 
 export function useUserProgress(userId?: string) {
@@ -65,6 +73,10 @@ export function useUserProgress(userId?: string) {
             has_analyzed_cv: false,
             has_selected_job: false,
             has_written_cover_letter: false,
+            has_started_jd: false,
+            has_submitted_jd_inputs: false,
+            has_generated_jd: false,
+            jd_generation_failed: false,
           });
 
         if (createError) {
@@ -109,7 +121,11 @@ export function useUserProgress(userId?: string) {
           has_uploaded_cv, 
           has_analyzed_cv, 
           has_selected_job, 
-          has_written_cover_letter
+          has_written_cover_letter,
+          has_started_jd,
+          has_submitted_jd_inputs,
+          has_generated_jd,
+          jd_generation_failed
         `)
         .eq('user_id', userId)
         .single();
@@ -124,6 +140,10 @@ export function useUserProgress(userId?: string) {
           has_analyzed_cv: data.has_analyzed_cv || false,
           has_selected_job: data.has_selected_job || false,
           has_written_cover_letter: data.has_written_cover_letter || false,
+          has_started_jd: data.has_started_jd || false,
+          has_submitted_jd_inputs: data.has_submitted_jd_inputs || false,
+          has_generated_jd: data.has_generated_jd || false,
+          jd_generation_failed: data.jd_generation_failed || false,
         });
       }
     } catch (error) {
@@ -251,6 +271,10 @@ export function useUserProgress(userId?: string) {
         has_analyzed_cv: false,
         has_selected_job: false,
         has_written_cover_letter: false,
+        has_started_jd: false,
+        has_submitted_jd_inputs: false,
+        has_generated_jd: false,
+        jd_generation_failed: false,
       };
 
       const { error } = await supabase

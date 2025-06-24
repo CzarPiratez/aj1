@@ -32,6 +32,7 @@ interface Message {
   metadata?: {
     websiteContent?: any;
     jobId?: string;
+    activeTask?: string;
   };
 }
 
@@ -58,6 +59,8 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const [isRecording, setIsRecording] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+  const [activeTask, setActiveTask] = useState<string | null>(null);
+  const [jdGenerationStep, setJdGenerationStep] = useState<string>('initial');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -94,6 +97,241 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
     }
   };
 
+  // Phase 1: JD Generation Initial Flow
+  const startJDGeneration = async () => {
+    console.log('🚀 Starting JD Generation flow');
+    
+    // Update progress flags
+    try {
+      await updateFlag('has_started_jd', true);
+    } catch (error) {
+      console.error('Error updating JD start flag:', error);
+    }
+
+    // Set active task
+    setActiveTask('post-job-generate-jd');
+    setJdGenerationStep('initial-choice');
+
+    // Add AI's initial message
+    const initialMessage: Message = {
+      id: Date.now().toString(),
+      content: `Great! I'll help you create a compelling job description. I have three ways to get started:
+
+**1. Brief + Link** 📝🔗
+Provide a brief description of the role and your organization's website URL. I'll analyze your site to understand your mission and create a tailored JD.
+
+**2. Brief Only** 📝
+Just give me a text description of the role, organization, and requirements. Perfect if you don't have a website or prefer manual input.
+
+**3. Upload Existing JD** 📄
+Upload an existing job description file (PDF, DOC, DOCX) that I can analyze and improve.
+
+Which option works best for you? Just type **1**, **2**, or **3**.`,
+      sender: 'assistant',
+      timestamp: new Date(),
+      type: 'suggestion',
+      metadata: {
+        activeTask: 'post-job-generate-jd'
+      }
+    };
+
+    setMessages(prev => [...prev, initialMessage]);
+
+    // Update main content to show JD editor
+    onContentChange({
+      type: 'post-job-editor',
+      title: 'Job Description Editor',
+      content: 'AI-powered job description generation and editing',
+      activeTask: 'post-job-generate-jd',
+      step: 'initial-choice'
+    });
+  };
+
+  // Handle JD Generation Flow
+  const handleJDGenerationFlow = async (userInput: string) => {
+    const input = userInput.trim();
+    
+    if (jdGenerationStep === 'initial-choice') {
+      if (input === '1') {
+        setJdGenerationStep('collecting-brief-link');
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `Perfect! I'll create your job description using a brief + your organization's website.
+
+Please provide:
+1. **Role title** (e.g., "Program Manager - Climate Action")
+2. **Brief description** of the role and key requirements
+3. **Organization website URL** so I can understand your mission and tone
+
+You can write this all in one message, or I can guide you step by step. What would you prefer?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, response]);
+        return true;
+      } else if (input === '2') {
+        setJdGenerationStep('collecting-brief-only');
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `Great choice! I'll create your job description from your text description.
+
+Please provide:
+1. **Organization name** and brief background
+2. **Role title** and level (e.g., "Senior Program Officer")
+3. **Key responsibilities** and main focus areas
+4. **Required qualifications** and experience
+5. **Location** and contract type (full-time, part-time, etc.)
+
+Feel free to write this in a natural way - I'll organize it into a professional job description!`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, response]);
+        return true;
+      } else if (input === '3') {
+        setJdGenerationStep('waiting-upload');
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `Excellent! Please upload your existing job description file using the paperclip icon (📎) below.
+
+I accept:
+- PDF files (.pdf)
+- Word documents (.doc, .docx)
+- Text files (.txt)
+
+Once uploaded, I'll analyze the content and suggest improvements to make it more engaging and effective for attracting top nonprofit talent.`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, response]);
+        return true;
+      } else {
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `I didn't catch that. Please choose one of the options by typing:
+- **1** for Brief + Link
+- **2** for Brief Only  
+- **3** for Upload Existing JD
+
+Which would you like to use?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, response]);
+        return true;
+      }
+    } else if (jdGenerationStep === 'collecting-brief-link' || jdGenerationStep === 'collecting-brief-only') {
+      // Process the collected information
+      setJdGenerationStep('generating');
+      setIsTyping(true);
+
+      try {
+        // Update progress flag
+        await updateFlag('has_submitted_jd_inputs', true);
+
+        // Simulate AI processing (in real implementation, this would call AI functions)
+        setTimeout(async () => {
+          const generatedJD = `# Program Manager - Climate Action
+
+## About [Organization Name]
+[Organization description based on provided information]
+
+## Role Overview
+We are seeking a dynamic Program Manager to lead our climate action initiatives...
+
+## Key Responsibilities
+- Develop and implement climate action programs
+- Coordinate with international partners and stakeholders
+- Monitor and evaluate program effectiveness
+- Manage program budgets and timelines
+
+## Required Qualifications
+- Master's degree in Environmental Science, International Development, or related field
+- 5+ years of experience in program management
+- Strong analytical and communication skills
+- Experience with climate change mitigation strategies
+
+## What We Offer
+- Competitive salary commensurate with experience
+- Comprehensive benefits package
+- Professional development opportunities
+- Flexible working arrangements
+
+*This is a full-time position based in [Location]. We are an equal opportunity employer committed to diversity and inclusion.*`;
+
+          // Update progress flag
+          await updateFlag('has_generated_jd', true);
+
+          const response: Message = {
+            id: Date.now().toString(),
+            content: `🎉 **Job Description Generated Successfully!**
+
+I've created a comprehensive job description based on your input. You can see it in the editor on the right side of your screen.
+
+The JD includes:
+✅ Compelling role overview
+✅ Clear responsibilities and qualifications  
+✅ Professional formatting
+✅ Inclusive language
+
+You can now:
+- **Edit** any section directly
+- **Refine with AI** for specific improvements
+- **Save as Draft** to continue later
+- **Publish** when ready
+
+Would you like me to refine any particular section or make adjustments to the tone?`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'progress'
+          };
+
+          setMessages(prev => [...prev, response]);
+          setIsTyping(false);
+          setJdGenerationStep('generated');
+
+          // Update main content with generated JD
+          onContentChange({
+            type: 'post-job-editor',
+            title: 'Job Description Editor',
+            content: 'Generated job description ready for editing',
+            activeTask: 'post-job-generate-jd',
+            step: 'generated',
+            generatedJD: generatedJD
+          });
+        }, 3000);
+
+      } catch (error) {
+        console.error('Error in JD generation:', error);
+        await updateFlag('jd_generation_failed', true);
+        
+        const errorResponse: Message = {
+          id: Date.now().toString(),
+          content: `I encountered an issue generating your job description. Let me try a different approach or you can provide additional details to help me create a better JD.
+
+Would you like to:
+1. Try again with more specific details
+2. Start over with a different input method
+3. Get help with what information works best
+
+What would you prefer?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, errorResponse]);
+        setIsTyping(false);
+      }
+      return true;
+    }
+
+    return false;
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
@@ -107,6 +345,12 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput('');
+
+    // Check if we're in JD generation flow
+    if (activeTask === 'post-job-generate-jd') {
+      const handled = await handleJDGenerationFlow(currentInput);
+      if (handled) return;
+    }
 
     setIsTyping(true);
 
@@ -194,9 +438,6 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       } else if (input.includes('cover letter') && !input.includes('refine')) {
         console.log('Updating cover letter progress...');
         await updateFlag('has_written_cover_letter', true);
-      } else if (input.includes('applied') || input.includes('apply')) {
-        console.log('Updating job application progress...');
-        await updateFlag('has_applied_to_job', true);
       }
     } catch (error) {
       console.error('Error updating progress based on input:', {
@@ -257,6 +498,68 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
       return;
     }
 
+    // Handle JD upload during generation flow
+    if (activeTask === 'post-job-generate-jd' && jdGenerationStep === 'waiting-upload') {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        content: `Perfect! I've received your job description file: "${file.name}". Let me analyze it and create an improved version...`,
+        sender: 'assistant',
+        timestamp: new Date(),
+      }]);
+      
+      // Process the uploaded JD file
+      setJdGenerationStep('generating');
+      setIsTyping(true);
+      
+      try {
+        await updateFlag('has_submitted_jd_inputs', true);
+        
+        // Simulate processing
+        setTimeout(async () => {
+          await updateFlag('has_generated_jd', true);
+          
+          const response: Message = {
+            id: Date.now().toString(),
+            content: `🎉 **Job Description Analysis Complete!**
+
+I've analyzed your uploaded JD and created an enhanced version with:
+✅ Improved structure and flow
+✅ More engaging language
+✅ Better formatting
+✅ Inclusive terminology
+✅ Clear call-to-action
+
+The enhanced job description is now available in the editor. You can review, edit, and refine it further!`,
+            sender: 'assistant',
+            timestamp: new Date(),
+            type: 'progress'
+          };
+          
+          setMessages(prev => [...prev, response]);
+          setIsTyping(false);
+          setJdGenerationStep('generated');
+          
+          onContentChange({
+            type: 'post-job-editor',
+            title: 'Job Description Editor',
+            content: 'Enhanced job description ready for editing',
+            activeTask: 'post-job-generate-jd',
+            step: 'generated',
+            generatedJD: '# Enhanced Job Description\n\n[Processed content from uploaded file]'
+          });
+        }, 2500);
+        
+      } catch (error) {
+        console.error('Error processing uploaded JD:', error);
+        await updateFlag('jd_generation_failed', true);
+        setIsTyping(false);
+      }
+      
+      e.target.value = '';
+      return;
+    }
+
+    // Handle CV uploads
     if (file.name.toLowerCase().includes('cv') || file.name.toLowerCase().includes('resume')) {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
@@ -293,17 +596,9 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const canSend = input.trim().length > 0 && !isTyping;
 
   const handleToolAction = (toolId: string, message: string) => {
-    // Special handling for JD tool - show construction message
-    if (toolId === 'post-job-generate-jd') {
-      const constructionMessage: Message = {
-        id: Date.now().toString(),
-        content: "🚧 The job posting tool is currently under construction. Please check back later for this feature!",
-        sender: 'assistant',
-        timestamp: new Date(),
-        type: 'suggestion'
-      };
-      
-      setMessages(prev => [...prev, constructionMessage]);
+    // Phase 1: Handle JD Generation tool
+    if (toolId === 'post-job-generate-jd' && message === 'START_JD_GENERATION') {
+      startJDGeneration();
       return;
     }
     
@@ -365,12 +660,16 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                         animate={{ scale: 1 }}
                         className={`inline-block p-3 rounded-2xl font-light leading-relaxed shadow-sm ${
                           message.type === 'suggestion' ? 'border-l-4' : ''
+                        } ${
+                          message.type === 'progress' ? 'border-l-4 border-l-green-500' : ''
                         }`}
                         style={{
                           backgroundColor: message.sender === 'user' ? '#D5765B' : 
-                                         message.type === 'suggestion' ? '#FBE4D5' : '#F1EFEC',
+                                         message.type === 'suggestion' ? '#FBE4D5' : 
+                                         message.type === 'progress' ? '#F0FDF4' : '#F1EFEC',
                           color: message.sender === 'user' ? '#FFFFFF' : '#3A3936',
-                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 'transparent'
+                          borderLeftColor: message.type === 'suggestion' ? '#D5765B' : 
+                                          message.type === 'progress' ? '#10B981' : 'transparent'
                         }}
                       >
                         <div className="text-sm whitespace-pre-wrap">{message.content}</div>
@@ -435,7 +734,9 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            AI is thinking...
+                            {activeTask === 'post-job-generate-jd' && jdGenerationStep === 'generating' 
+                              ? 'Generating job description...' 
+                              : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -481,7 +782,13 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                 onKeyPress={handleKeyPress}
                 onFocus={() => setIsFocused(true)}
                 onBlur={() => setIsFocused(false)}
-                placeholder="Ask me anything about jobs, CVs, or matches..."
+                placeholder={
+                  activeTask === 'post-job-generate-jd' && jdGenerationStep === 'initial-choice'
+                    ? "Type 1, 2, or 3 to choose your preferred method..."
+                    : activeTask === 'post-job-generate-jd' && jdGenerationStep.includes('collecting')
+                    ? "Provide the details for your job description..."
+                    : "Ask me anything about jobs, CVs, or matches..."
+                }
                 className="flex-1 min-h-[60px] max-h-[200px] resize-none border-0 bg-transparent font-light text-sm focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 p-0 leading-relaxed"
                 style={{ 
                   color: '#3A3936',
@@ -528,7 +835,9 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="bg-gray-900 text-white text-xs">
-                    Attach files (.pdf, .docx, .txt, .json)
+                    {activeTask === 'post-job-generate-jd' && jdGenerationStep === 'waiting-upload'
+                      ? 'Upload your job description file'
+                      : 'Attach files (.pdf, .docx, .txt, .json)'}
                   </TooltipContent>
                 </Tooltip>
 

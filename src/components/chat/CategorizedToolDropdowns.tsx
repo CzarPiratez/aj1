@@ -150,7 +150,10 @@ export function CategorizedToolDropdowns({
       description: 'Create and post job descriptions with AI assistance',
       isActive: () => true,
       inactiveMessage: '',
-      action: () => onToolAction('post-job-generate-jd', 'I want to post a job or generate a job description')
+      action: () => {
+        // Phase 1: Trigger the initial AI message for JD generation
+        onToolAction('post-job-generate-jd', 'START_JD_GENERATION');
+      }
     },
     {
       id: 'generate-org-profile',
