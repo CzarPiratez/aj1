@@ -51,6 +51,7 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { refineJDSection, adjustTone, detectBiasAndSuggestAlternatives } from '@/lib/ai';
+import { JDPreviewModal } from './jobs/JDPreviewModal';
 
 interface PostJobEditorProps {
   generatedJD?: string;
@@ -613,6 +614,37 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     return fullJD;
   };
 
+  // Handle print action
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Handle download action
+  const handleDownload = () => {
+    // Create a blob and download
+    const blob = new Blob([generateFullJobDescription()], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${jobTitle.replace(/\s+/g, '-').toLowerCase()}-job-description.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Prepare sections for preview modal
+  const getPreviewSections = () => {
+    return sections
+      .filter(section => section.id !== 'job-title')
+      .map(section => ({
+        id: section.id,
+        title: section.title,
+        content: section.content,
+        isDraft: section.isDraft
+      }));
+  };
+
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
       {/* Header */}
@@ -639,6 +671,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
               size="sm"
               onClick={() => setIsPreviewOpen(true)}
               className="h-9"
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
             >
               <Eye className="w-4 h-4 mr-2" />
               Preview
@@ -690,6 +723,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                   >
                     <Card 
                       className="border shadow-sm hover:shadow-md transition-all duration-200"
+                      style={{ borderColor: '#D8D5D2' }}
                     >
                       <CardHeader className="p-4 pb-2">
                         <div className="flex items-center justify-between">
@@ -723,8 +757,9 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                               onClick={() => openVersionHistoryModal(section.id)}
                               className="h-7 w-7 p-0 rounded-full"
                               title="Version History"
+                              style={{ color: '#66615C' }}
                             >
-                              <Clock className="w-3.5 h-3.5" style={{ color: '#66615C' }} />
+                              <Clock className="w-3.5 h-3.5" />
                             </Button>
                             
                             <Button
@@ -734,8 +769,9 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                               className="h-7 w-7 p-0 rounded-full"
                               title="Improve with AI"
                               disabled={section.isLocked}
+                              style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
                             >
-                              <Wand2 className="w-3.5 h-3.5" style={{ color: '#D5765B' }} />
+                              <Wand2 className="w-3.5 h-3.5" />
                             </Button>
                             
                             <Button
@@ -744,11 +780,12 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                               onClick={() => toggleSectionLock(section.id)}
                               className="h-7 w-7 p-0 rounded-full"
                               title={section.isLocked ? 'Unlock Section' : 'Lock Section'}
+                              style={{ color: '#66615C' }}
                             >
                               {section.isLocked ? (
-                                <Lock className="w-3.5 h-3.5" style={{ color: '#66615C' }} />
+                                <Lock className="w-3.5 h-3.5" />
                               ) : (
-                                <Unlock className="w-3.5 h-3.5" style={{ color: '#66615C' }} />
+                                <Unlock className="w-3.5 h-3.5" />
                               )}
                             </Button>
                             
@@ -759,11 +796,12 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                               className="h-7 w-7 p-0 rounded-full"
                               title={section.isEditing ? 'Save Changes' : 'Edit Section'}
                               disabled={section.isLocked}
+                              style={{ color: section.isLocked ? '#D8D5D2' : section.isEditing ? '#10B981' : '#66615C' }}
                             >
                               {section.isEditing ? (
-                                <Save className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
+                                <Save className="w-3.5 h-3.5" />
                               ) : (
-                                <Edit3 className="w-3.5 h-3.5" style={{ color: '#66615C' }} />
+                                <Edit3 className="w-3.5 h-3.5" />
                               )}
                             </Button>
                           </div>
@@ -777,7 +815,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                             onChange={(e) => handleSectionChange(section.id, e.target.value)}
                             placeholder={`Enter ${section.title} content...`}
                             className="min-h-[150px] font-light text-sm"
-                            style={{ color: '#3A3936' }}
+                            style={{ color: '#3A3936', borderColor: '#D8D5D2' }}
                           />
                         ) : (
                           <div 
@@ -806,7 +844,9 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
       <Dialog open={isRefinementModalOpen} onOpenChange={setIsRefinementModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Improve with AI</DialogTitle>
+            <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
+              Improve with AI
+            </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 my-2">
@@ -819,6 +859,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
               onChange={(e) => setAiRefinementInstructions(e.target.value)}
               placeholder="e.g., Make the language more inclusive, add more details about technical requirements, make it more concise..."
               className="min-h-[100px]"
+              style={{ borderColor: '#D8D5D2', color: '#3A3936' }}
             />
           </div>
           
@@ -826,6 +867,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             <Button
               variant="outline"
               onClick={() => setIsRefinementModalOpen(false)}
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
             >
               Cancel
             </Button>
@@ -856,7 +898,9 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
       <Dialog open={isVersionHistoryOpen} onOpenChange={setIsVersionHistoryOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Version History</DialogTitle>
+            <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
+              Version History
+            </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 my-2">
@@ -864,7 +908,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
               Select a previous version to restore
             </p>
             
-            <ScrollArea className="h-[300px] border rounded-md p-2">
+            <ScrollArea className="h-[300px] border rounded-md p-2" style={{ borderColor: '#D8D5D2' }}>
               {currentSectionForHistory && sections.find(s => s.id === currentSectionForHistory)?.versions.map((version, index, array) => (
                 <div 
                   key={index}
@@ -885,6 +929,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                         size="sm"
                         onClick={() => restoreVersion(index)}
                         className="h-7 text-xs"
+                        style={{ borderColor: '#D8D5D2', color: '#66615C' }}
                       >
                         <RotateCcw className="w-3 h-3 mr-2" />
                         Restore
@@ -912,6 +957,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             <Button
               variant="outline"
               onClick={() => setIsVersionHistoryOpen(false)}
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
             >
               Close
             </Button>
@@ -920,106 +966,14 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
       </Dialog>
 
       {/* Preview Modal */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] w-[90vw]">
-          <DialogHeader>
-            <DialogTitle>Job Description Preview</DialogTitle>
-          </DialogHeader>
-          
-          <ScrollArea className="max-h-[calc(90vh-120px)] mt-4 pr-4">
-            <div className="space-y-6 print:space-y-4">
-              {/* Job Title */}
-              <div className="text-center mb-8 print:mb-6">
-                <h1 className="text-3xl font-bold print:text-2xl" style={{ color: '#3A3936' }}>
-                  {jobTitle}
-                </h1>
-              </div>
-              
-              {/* Sections in order */}
-              {sections.map((section) => (
-                section.id !== 'job-title' && section.content.trim() ? (
-                  <div key={section.id} className="print:break-inside-avoid">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <h2 className="text-xl font-semibold print:text-lg" style={{ color: '#3A3936' }}>
-                        {section.title}
-                      </h2>
-                      
-                      {section.isDraft && (
-                        <Badge 
-                          variant="outline" 
-                          className="text-xs px-2 py-0 h-5 print:hidden"
-                          style={{ borderColor: '#F59E0B', color: '#F59E0B' }}
-                        >
-                          Not Final
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    <div 
-                      className="prose prose-sm max-w-none print:text-sm"
-                      style={{ color: '#3A3936' }}
-                    >
-                      {section.content.split('\n').map((line, i) => (
-                        <React.Fragment key={i}>
-                          {line}
-                          <br />
-                        </React.Fragment>
-                      ))}
-                    </div>
-                    
-                    {section.id !== sections[sections.length - 1].id && (
-                      <Separator className="mt-4 print:mt-3" style={{ backgroundColor: '#F1EFEC' }} />
-                    )}
-                  </div>
-                ) : null
-              ))}
-            </div>
-          </ScrollArea>
-          
-          <DialogFooter className="flex justify-between items-center mt-4 print:hidden">
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.print()}
-                className="h-8 text-xs"
-              >
-                <Printer className="w-3.5 h-3.5 mr-2" />
-                Print
-              </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Create a blob and download
-                  const blob = new Blob([generateFullJobDescription()], { type: 'text/markdown' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${jobTitle.replace(/\s+/g, '-').toLowerCase()}-job-description.md`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-                className="h-8 text-xs"
-              >
-                <Download className="w-3.5 h-3.5 mr-2" />
-                Download
-              </Button>
-            </div>
-            
-            <Button
-              onClick={() => setIsPreviewOpen(false)}
-              className="h-8 text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              Close Preview
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <JDPreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        jobTitle={jobTitle}
+        sections={getPreviewSections()}
+        onDownload={handleDownload}
+        onPrint={handlePrint}
+      />
     </div>
   );
 }

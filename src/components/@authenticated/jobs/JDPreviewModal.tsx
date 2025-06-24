@@ -46,7 +46,9 @@ export function JDPreviewModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] w-[90vw]">
         <DialogHeader>
-          <DialogTitle>Job Description Preview</DialogTitle>
+          <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
+            Job Description Preview
+          </DialogTitle>
         </DialogHeader>
         
         <ScrollArea className="max-h-[calc(90vh-120px)] mt-4 pr-4">
@@ -59,42 +61,40 @@ export function JDPreviewModal({
             </div>
             
             {/* Sections in order */}
-            {sections.map((section, index) => (
-              section.content.trim() ? (
-                <div key={section.id} className="print:break-inside-avoid">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h2 className="text-xl font-semibold print:text-lg" style={{ color: '#3A3936' }}>
-                      {section.title}
-                    </h2>
-                    
-                    {section.isDraft && (
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs px-2 py-0 h-5 print:hidden"
-                        style={{ borderColor: '#F59E0B', color: '#F59E0B' }}
-                      >
-                        Not Final
-                      </Badge>
-                    )}
-                  </div>
+            {sections.filter(section => section.content.trim()).map((section, index, filteredSections) => (
+              <div key={section.id} className="print:break-inside-avoid">
+                <div className="flex items-center space-x-2 mb-2">
+                  <h2 className="text-xl font-semibold print:text-lg" style={{ color: '#3A3936' }}>
+                    {section.title}
+                  </h2>
                   
-                  <div 
-                    className="prose prose-sm max-w-none print:text-sm"
-                    style={{ color: '#3A3936' }}
-                  >
-                    {section.content.split('\n').map((line, i) => (
-                      <React.Fragment key={i}>
-                        {line}
-                        <br />
-                      </React.Fragment>
-                    ))}
-                  </div>
-                  
-                  {index < sections.length - 1 && (
-                    <Separator className="mt-4 print:mt-3" style={{ backgroundColor: '#F1EFEC' }} />
+                  {section.isDraft && (
+                    <Badge 
+                      variant="outline" 
+                      className="text-xs px-2 py-0 h-5 print:hidden"
+                      style={{ borderColor: '#F59E0B', color: '#F59E0B' }}
+                    >
+                      Not Final
+                    </Badge>
                   )}
                 </div>
-              ) : null
+                
+                <div 
+                  className="prose prose-sm max-w-none print:text-sm"
+                  style={{ color: '#3A3936' }}
+                >
+                  {section.content.split('\n').map((line, i) => (
+                    <React.Fragment key={i}>
+                      {line}
+                      <br />
+                    </React.Fragment>
+                  ))}
+                </div>
+                
+                {index < filteredSections.length - 1 && (
+                  <Separator className="mt-4 print:mt-3" style={{ backgroundColor: '#F1EFEC' }} />
+                )}
+              </div>
             ))}
           </div>
         </ScrollArea>
@@ -106,6 +106,7 @@ export function JDPreviewModal({
               size="sm"
               onClick={onPrint}
               className="h-8 text-xs"
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
             >
               <Printer className="w-3.5 h-3.5 mr-2" />
               Print
@@ -116,6 +117,7 @@ export function JDPreviewModal({
               size="sm"
               onClick={onDownload}
               className="h-8 text-xs"
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
             >
               <Download className="w-3.5 h-3.5 mr-2" />
               Download
