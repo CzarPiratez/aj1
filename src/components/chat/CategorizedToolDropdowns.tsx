@@ -61,7 +61,7 @@ export function CategorizedToolDropdowns({
       id: 'upload-analyze-cv',
       label: 'Upload & Analyze CV',
       icon: Upload,
-      description: 'Upload your CV and get AI-powered analysis',
+      description: 'AI analysis of your CV',
       isActive: () => true,
       inactiveMessage: '',
       action: () => onToolAction('upload-analyze-cv', 'I want to upload and analyze my CV')
@@ -70,7 +70,7 @@ export function CategorizedToolDropdowns({
       id: 'revise-cv',
       label: 'Revise CV for a Job',
       icon: FileEdit,
-      description: 'Tailor your CV for a specific job opportunity',
+      description: 'Tailor your CV for a specific job',
       isActive: (flags) => flags.has_analyzed_cv,
       inactiveMessage: "You'll need to upload and analyze your CV before I can help you revise it for specific jobs. Click 'Upload & Analyze CV' above or drop your file here!",
       action: () => onToolAction('revise-cv', 'Help me revise my CV for a specific job')
@@ -79,7 +79,7 @@ export function CategorizedToolDropdowns({
       id: 'write-cover-letter',
       label: 'Write Cover Letter',
       icon: Mail,
-      description: 'Create a compelling cover letter for your application',
+      description: 'Create a compelling cover letter',
       isActive: (flags) => flags.has_selected_job,
       inactiveMessage: "I'd love to help you write a cover letter! First, let's find and select a job you're interested in. Try 'Search Jobs (AI-Powered)' to get started.",
       action: () => onToolAction('write-cover-letter', 'Help me write a cover letter for my selected job')
@@ -88,7 +88,7 @@ export function CategorizedToolDropdowns({
       id: 'revise-cover-letter',
       label: 'Revise Cover Letter',
       icon: Wand2,
-      description: 'Polish and improve your existing cover letter',
+      description: 'Polish your existing cover letter',
       isActive: (flags) => flags.has_written_cover_letter,
       inactiveMessage: "Once you've written a cover letter, I can help you refine and improve it. Let's start by creating your first draft!",
       action: () => onToolAction('revise-cover-letter', 'Help me revise and improve my cover letter')
@@ -109,7 +109,7 @@ export function CategorizedToolDropdowns({
       id: 'manual-job-search',
       label: 'Manual Job Search',
       icon: Eye,
-      description: 'Browse jobs with custom filters and criteria',
+      description: 'Browse jobs with custom filters',
       isActive: () => true,
       inactiveMessage: '',
       action: () => onToolAction('manual-job-search', 'I want to manually search and browse jobs')
@@ -118,7 +118,7 @@ export function CategorizedToolDropdowns({
       id: 'match-me-to-jobs',
       label: 'Match Me to Jobs',
       icon: Target,
-      description: 'Find jobs that perfectly match your profile',
+      description: 'Find jobs that match your profile',
       isActive: (flags) => flags.has_analyzed_cv,
       inactiveMessage: "To find the best job matches for you, I need to analyze your CV first. Upload your CV and I'll find opportunities that align with your skills and experience!",
       action: () => onToolAction('match-me-to-jobs', 'Find job matches based on my CV and preferences')
@@ -127,7 +127,7 @@ export function CategorizedToolDropdowns({
       id: 'explore-similar-roles',
       label: 'Explore Similar Roles',
       icon: RotateCcw,
-      description: 'Discover alternative career paths and opportunities',
+      description: 'Discover alternative career paths',
       isActive: () => true,
       inactiveMessage: '',
       action: () => onToolAction('explore-similar-roles', 'I can help you explore similar roles and alternative career paths. What kind of roles are you interested in?')
@@ -136,7 +136,7 @@ export function CategorizedToolDropdowns({
       id: 'skill-gaps-upskill',
       label: 'Show Skill Gaps & Upskill Paths',
       icon: Lightbulb,
-      description: 'Identify skills to develop and learning opportunities',
+      description: 'Identify skills to develop',
       isActive: (flags) => flags.has_analyzed_cv,
       inactiveMessage: "I can analyze your skill gaps and suggest upskilling paths once I understand your current abilities. Upload your CV so I can provide personalized recommendations!",
       action: () => onToolAction('skill-gaps-upskill', 'Analyze my skill gaps and suggest upskilling opportunities')
@@ -148,7 +148,7 @@ export function CategorizedToolDropdowns({
       id: 'post-job-generate-jd',
       label: 'Post a Job / Generate JD',
       icon: Plus,
-      description: 'Create and post job descriptions with AI assistance',
+      description: 'Create job descriptions with AI',
       isActive: () => true,
       inactiveMessage: '',
       autoSubmit: true,
@@ -160,7 +160,7 @@ export function CategorizedToolDropdowns({
       id: 'generate-org-profile',
       label: 'Generate Org Profile',
       icon: Building,
-      description: 'Create a compelling organization profile',
+      description: 'Create a compelling org profile',
       isActive: () => true,
       inactiveMessage: '',
       action: () => onToolAction('generate-org-profile', 'Help me create an organization profile')
@@ -169,7 +169,7 @@ export function CategorizedToolDropdowns({
       id: 'match-candidates',
       label: 'Match Candidates',
       icon: Users,
-      description: 'Find the best candidates for your posted jobs',
+      description: 'Find candidates for your jobs',
       isActive: (flags) => flags.has_published_job,
       inactiveMessage: "To match candidates to your jobs, you'll need to publish a job first. Try using the 'Post a Job / Generate JD' tool to create and publish a job posting.",
       action: () => onToolAction('match-candidates', 'Help me find candidates for my job posting')

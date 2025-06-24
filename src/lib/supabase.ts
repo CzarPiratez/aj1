@@ -170,6 +170,12 @@ export interface JobDraft {
   last_edited_at: string;
   created_at: string;
   updated_at: string;
+  sections?: any[];
+  section_order?: string[];
+  metadata?: any;
+  ai_generation_method?: string;
+  error_log?: string;
+  is_locked?: boolean;
 }
 
 export interface Job {
@@ -200,6 +206,11 @@ export interface Job {
   generation_metadata: any;
   created_at: string;
   updated_at: string;
+  sections?: any;
+  section_order?: string[];
+  public_token?: string;
+  application_method?: string;
+  org_profile?: any;
 }
 
 export interface Application {
