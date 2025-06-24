@@ -560,3 +560,15 @@ export async function publishJobDraft(draftId: string, userId: string) {
 
   return job;
 }
+
+/**
+ * Generate with AI wrapper that can switch between different AI providers
+ * @param messages Array of messages to send to the AI
+ * @param options Options for the AI call
+ * @returns AI response
+ */
+export async function generateWithAI(messages: AIMessage[], options: any = {}) {
+  // This function can be expanded to switch between different AI providers
+  // based on configuration or environment variables
+  return await callAI(messages, options);
+}
