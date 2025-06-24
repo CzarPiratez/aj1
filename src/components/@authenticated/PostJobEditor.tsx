@@ -16,7 +16,9 @@ import {
   Users,
   Target,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  GripVertical,
+  Plus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +28,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 
 interface PostJobEditorProps {
   generatedJD?: string;
@@ -39,30 +43,33 @@ interface JDSection {
   content: string;
   isLocked: boolean;
   isEditing: boolean;
+  order: number;
 }
 
 export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorProps) {
   const [sections, setSections] = useState<JDSection[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isDraft, setIsDraft] = useState(true);
+  const [selectedTone, setSelectedTone] = useState<string>('professional');
+  const [readabilityScore, setReadabilityScore] = useState(85);
+  const [deiScore, setDeiScore] = useState(92);
+  const [draggedSection, setDraggedSection] = useState<string | null>(null);
 
   // Initialize sections when JD is generated
   useEffect(() => {
     if (generatedJD && step === 'generated') {
-      // Parse the generated JD into sections
       const parsedSections = parseJDIntoSections(generatedJD);
       setSections(parsedSections);
     }
   }, [generatedJD, step]);
 
   const parseJDIntoSections = (jdContent: string): JDSection[] => {
-    // Simple parsing logic - in real implementation, this would be more sophisticated
     const lines = jdContent.split('\n');
     const sections: JDSection[] = [];
     let currentSection: Partial<JDSection> = {};
     let currentContent: string[] = [];
 
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       if (line.startsWith('#')) {
         // Save previous section
         if (currentSection.title) {
@@ -71,7 +78,8 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
             title: currentSection.title,
             content: currentContent.join('\n').trim(),
             isLocked: true,
-            isEditing: false
+            isEditing: false,
+            order: sections.length
           });
         }
         
@@ -92,7 +100,8 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
         title: currentSection.title,
         content: currentContent.join('\n').trim(),
         isLocked: true,
-        isEditing: false
+        isEditing: false,
+        order: sections.length
       });
     }
 
@@ -123,14 +132,45 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
     ));
   };
 
+  const handleRefineWithAI = (sectionId: string, sectionTitle: string) => {
+    // This would trigger the chat interface to ask for refinement instructions
+    console.log(`Refining section: ${sectionTitle}`);
+    // In real implementation, this would communicate with the chat interface
+  };
+
+  const addCustomSection = () => {
+    const newSection: JDSection = {
+      id: `custom-section-${Date.now()}`,
+      title: 'Custom Section',
+      content: 'Add your custom content here...',
+      isLocked: false,
+      isEditing: true,
+      order: sections.length
+    };
+    setSections(prev => [...prev, newSection]);
+  };
+
+  const reorderSections = (dragIndex: number, hoverIndex: number) => {
+    const draggedSection = sections[dragIndex];
+    const newSections = [...sections];
+    newSections.splice(dragIndex, 1);
+    newSections.splice(hoverIndex, 0, draggedSection);
+    
+    // Update order values
+    const reorderedSections = newSections.map((section, index) => ({
+      ...section,
+      order: index
+    }));
+    
+    setSections(reorderedSections);
+  };
+
   const saveDraft = async () => {
-    // In real implementation, this would save to the database
     console.log('Saving draft...');
     setIsDraft(true);
   };
 
   const publishJob = async () => {
-    // In real implementation, this would publish the job
     console.log('Publishing job...');
     setIsDraft(false);
   };
@@ -253,6 +293,73 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
         </div>
       </div>
 
+      {/* AI Enhancement Controls */}
+      {!isPreviewMode && (
+        <div className="border-b p-4 space-y-4" style={{ borderColor: '#D8D5D2' }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Tone Control */}
+            <div>
+              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
+                Tone Setting
+              </Label>
+              <Select value={selectedTone} onValueChange={setSelectedTone}>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="professional">Professional</SelectItem>
+                  <SelectItem value="inspiring">Inspiring</SelectItem>
+                  <SelectItem value="conversational">Conversational</SelectItem>
+                  <SelectItem value="formal">Formal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Readability Score */}
+            <div>
+              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
+                Readability Score
+              </Label>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                  <div 
+                    className="h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${readabilityScore}%`,
+                      backgroundColor: readabilityScore > 80 ? '#10B981' : readabilityScore > 60 ? '#F59E0B' : '#EF4444'
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-medium" style={{ color: '#3A3936' }}>
+                  {readabilityScore}%
+                </span>
+              </div>
+            </div>
+
+            {/* DEI Score */}
+            <div>
+              <Label className="text-xs font-medium mb-2 block" style={{ color: '#3A3936' }}>
+                DEI Score
+              </Label>
+              <div className="flex items-center space-x-2">
+                <div className="flex-1 h-2 bg-gray-200 rounded-full">
+                  <div 
+                    className="h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${deiScore}%`,
+                      backgroundColor: deiScore > 85 ? '#10B981' : deiScore > 70 ? '#F59E0B' : '#EF4444'
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-medium" style={{ color: '#3A3936' }}>
+                  {deiScore}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <ScrollArea className="flex-1">
         <div className="p-6 max-w-4xl mx-auto">
@@ -269,22 +376,24 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
                 <Card className="border-0 shadow-sm">
                   <CardContent className="p-6">
                     <div className="prose prose-sm max-w-none">
-                      {sections.map((section) => (
-                        <div key={section.id} className="mb-6">
-                          <h3 
-                            className="text-lg font-medium mb-3"
-                            style={{ color: '#3A3936' }}
-                          >
-                            {section.title}
-                          </h3>
-                          <div 
-                            className="whitespace-pre-wrap font-light leading-relaxed"
-                            style={{ color: '#66615C' }}
-                          >
-                            {section.content}
+                      {sections
+                        .sort((a, b) => a.order - b.order)
+                        .map((section) => (
+                          <div key={section.id} className="mb-6">
+                            <h3 
+                              className="text-lg font-medium mb-3"
+                              style={{ color: '#3A3936' }}
+                            >
+                              {section.title}
+                            </h3>
+                            <div 
+                              className="whitespace-pre-wrap font-light leading-relaxed"
+                              style={{ color: '#66615C' }}
+                            >
+                              {section.content}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -297,84 +406,110 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
                 exit={{ opacity: 0, x: 20 }}
                 className="space-y-4"
               >
-                {/* Edit Mode - Section-based editing */}
-                {sections.map((section, index) => (
-                  <motion.div
-                    key={section.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-base" style={{ color: '#3A3936' }}>
-                            {section.title}
-                          </CardTitle>
-                          
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => toggleSectionLock(section.id)}
-                              className="h-6 w-6 p-0"
-                            >
-                              {section.isLocked ? (
-                                <Lock className="w-3 h-3" style={{ color: '#66615C' }} />
-                              ) : (
-                                <Unlock className="w-3 h-3" style={{ color: '#D5765B' }} />
-                              )}
-                            </Button>
+                {/* Edit Mode - Section-based editing with drag and drop */}
+                {sections
+                  .sort((a, b) => a.order - b.order)
+                  .map((section, index) => (
+                    <motion.div
+                      key={section.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      draggable
+                      onDragStart={() => setDraggedSection(section.id)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (draggedSection && draggedSection !== section.id) {
+                          const dragIndex = sections.findIndex(s => s.id === draggedSection);
+                          const hoverIndex = sections.findIndex(s => s.id === section.id);
+                          reorderSections(dragIndex, hoverIndex);
+                        }
+                        setDraggedSection(null);
+                      }}
+                      className="cursor-move"
+                    >
+                      <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <GripVertical className="w-4 h-4" style={{ color: '#66615C' }} />
+                              <CardTitle className="text-base" style={{ color: '#3A3936' }}>
+                                {section.isEditing ? (
+                                  <Input
+                                    value={section.title}
+                                    onChange={(e) => updateSectionContent(section.id, section.content)}
+                                    className="h-6 text-base font-medium"
+                                  />
+                                ) : (
+                                  section.title
+                                )}
+                              </CardTitle>
+                            </div>
                             
-                            {!section.isLocked && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleSectionEdit(section.id)}
-                                  className="h-6 px-2 text-xs"
-                                >
-                                  <Edit3 className="w-3 h-3 mr-1" />
-                                  {section.isEditing ? 'Done' : 'Edit'}
-                                </Button>
-                                
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 px-2 text-xs"
-                                  style={{ color: '#D5765B' }}
-                                >
-                                  <Wand2 className="w-3 h-3 mr-1" />
-                                  Refine with AI
-                                </Button>
-                              </>
-                            )}
+                            <div className="flex items-center space-x-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleSectionLock(section.id)}
+                                className="h-6 w-6 p-0"
+                              >
+                                {section.isLocked ? (
+                                  <Lock className="w-3 h-3" style={{ color: '#66615C' }} />
+                                ) : (
+                                  <Unlock className="w-3 h-3" style={{ color: '#D5765B' }} />
+                                )}
+                              </Button>
+                              
+                              {!section.isLocked && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleSectionEdit(section.id)}
+                                    className="h-6 px-2 text-xs"
+                                  >
+                                    <Edit3 className="w-3 h-3 mr-1" />
+                                    {section.isEditing ? 'Done' : 'Edit'}
+                                  </Button>
+                                  
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRefineWithAI(section.id, section.title)}
+                                    className="h-6 px-2 text-xs"
+                                    style={{ color: '#D5765B' }}
+                                  >
+                                    <Wand2 className="w-3 h-3 mr-1" />
+                                    Refine with AI
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </CardHeader>
-                      
-                      <CardContent className="pt-0">
-                        {section.isEditing ? (
-                          <Textarea
-                            value={section.content}
-                            onChange={(e) => updateSectionContent(section.id, e.target.value)}
-                            className="min-h-[120px] font-light leading-relaxed"
-                            style={{ color: '#3A3936' }}
-                          />
-                        ) : (
-                          <div 
-                            className={`whitespace-pre-wrap font-light leading-relaxed p-3 rounded-lg ${
-                              section.isLocked ? 'bg-gray-50' : 'bg-transparent'
-                            }`}
-                            style={{ color: section.isLocked ? '#66615C' : '#3A3936' }}
-                          >
-                            {section.content}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+                        </CardHeader>
+                        
+                        <CardContent className="pt-0">
+                          {section.isEditing ? (
+                            <Textarea
+                              value={section.content}
+                              onChange={(e) => updateSectionContent(section.id, e.target.value)}
+                              className="min-h-[120px] font-light leading-relaxed"
+                              style={{ color: '#3A3936' }}
+                            />
+                          ) : (
+                            <div 
+                              className={`whitespace-pre-wrap font-light leading-relaxed p-3 rounded-lg ${
+                                section.isLocked ? 'bg-gray-50' : 'bg-transparent'
+                              }`}
+                              style={{ color: section.isLocked ? '#66615C' : '#3A3936' }}
+                            >
+                              {section.content}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
 
                 {/* Add Section Button */}
                 <motion.div
@@ -384,10 +519,11 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
                 >
                   <Button
                     variant="outline"
+                    onClick={addCustomSection}
                     className="w-full h-12 border-dashed"
                     style={{ borderColor: '#D5765B', color: '#D5765B' }}
                   >
-                    <FileText className="w-4 h-4 mr-2" />
+                    <Plus className="w-4 h-4 mr-2" />
                     Add Custom Section
                   </Button>
                 </motion.div>
