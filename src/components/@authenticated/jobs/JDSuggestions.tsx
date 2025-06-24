@@ -409,7 +409,7 @@ function generateSuggestions(sectionTitle: string, sectionContent: string): Sugg
       title: 'Add salary transparency',
       description: 'Including salary ranges promotes equity and attracts more diverse candidates.',
       original: 'Competitive salary based on experience.',
-      suggested: 'Salary range: $60,000-$75,000 annually, depending on experience and qualifications. We're committed to pay equity within our organization.',
+      suggested: 'Salary range: $60,000-$75,000 annually, depending on experience and qualifications. We\'re committed to pay equity within our organization.',
       impact: 'high'
     });
     
