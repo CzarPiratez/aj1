@@ -815,3 +815,130 @@ ${content}`;
     improvedContent: response.content
   };
 }
+
+// Job Description Generation from Brief and Link
+export async function generateJobDescriptionFromBriefAndLink(
+  roleTitle: string,
+  briefDescription: string,
+  organizationUrl?: string
+): Promise<string> {
+  const systemPrompt = `You are an AI expert in creating compelling job descriptions for the nonprofit and development sector. Your task is to generate a comprehensive, well-structured job description based on the provided information.
+
+Follow these guidelines:
+- Create a professional, engaging job description suitable for the nonprofit sector
+- Structure the content with clear Markdown headings (# for main title, ## for sections)
+- Include these standard sections: About the Organization, Role Overview, Key Responsibilities, Required Qualifications, Preferred Qualifications, What We Offer
+- Use inclusive, unbiased language throughout
+- Be specific and detailed while maintaining clarity
+- Format the content professionally with appropriate spacing and structure
+- If organization URL is provided, incorporate relevant mission and values from their website
+- Ensure the job description is comprehensive and ready for posting
+
+The output should be a complete job description in Markdown format.`;
+
+  const userPrompt = `Please create a comprehensive job description for the following role:
+
+ROLE TITLE: ${roleTitle}
+
+BRIEF DESCRIPTION:
+${briefDescription}
+
+${organizationUrl ? `ORGANIZATION WEBSITE: ${organizationUrl}` : ''}
+
+Please structure the job description with clear sections using Markdown formatting.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.7, 
+    max_tokens: 3000 
+  });
+
+  return response.content;
+}
+
+// Job Description Generation from Brief Only
+export async function generateJobDescriptionFromBriefOnly(
+  organizationName: string,
+  roleTitle: string,
+  responsibilities: string,
+  qualifications: string,
+  locationAndType: string
+): Promise<string> {
+  const systemPrompt = `You are an AI expert in creating compelling job descriptions for the nonprofit and development sector. Your task is to generate a comprehensive, well-structured job description based on the provided information.
+
+Follow these guidelines:
+- Create a professional, engaging job description suitable for the nonprofit sector
+- Structure the content with clear Markdown headings (# for main title, ## for sections)
+- Include these standard sections: About the Organization, Role Overview, Key Responsibilities, Required Qualifications, Preferred Qualifications, What We Offer
+- Use inclusive, unbiased language throughout
+- Be specific and detailed while maintaining clarity
+- Format the content professionally with appropriate spacing and structure
+- Expand on the provided information to create a complete job description
+- Add appropriate benefits and perks common in the nonprofit sector
+
+The output should be a complete job description in Markdown format.`;
+
+  const userPrompt = `Please create a comprehensive job description based on the following information:
+
+ORGANIZATION NAME: ${organizationName}
+
+ROLE TITLE: ${roleTitle}
+
+KEY RESPONSIBILITIES:
+${responsibilities}
+
+REQUIRED QUALIFICATIONS:
+${qualifications}
+
+LOCATION AND CONTRACT TYPE:
+${locationAndType}
+
+Please structure the job description with clear sections using Markdown formatting.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.7, 
+    max_tokens: 3000 
+  });
+
+  return response.content;
+}
+
+// Job Description Enhancement from Existing JD
+export async function enhanceExistingJobDescription(
+  existingJD: string
+): Promise<string> {
+  const systemPrompt = `You are an AI expert in enhancing job descriptions for the nonprofit and development sector. Your task is to improve an existing job description while maintaining its core information and requirements.
+
+Follow these guidelines:
+- Preserve all essential information from the original job description
+- Improve structure and organization with clear Markdown headings (# for main title, ## for sections)
+- Enhance language to be more engaging and compelling
+- Ensure inclusive, unbiased language throughout
+- Add appropriate section headers if missing
+- Improve formatting and readability
+- Add any missing standard sections that would benefit the job description
+- Maintain the original requirements and qualifications
+
+The output should be an enhanced version of the job description in Markdown format.`;
+
+  const userPrompt = `Please enhance this existing job description:
+
+${existingJD}
+
+Please improve the structure, language, and formatting while preserving all essential information.`;
+
+  const response = await callAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { 
+    temperature: 0.6, 
+    max_tokens: 3000 
+  });
+
+  return response.content;
+}

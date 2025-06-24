@@ -19,7 +19,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { generateChatResponse, checkAIStatus } from '@/lib/ai';
+import { 
+  generateChatResponse, 
+  checkAIStatus, 
+  generateJobDescriptionFromBriefAndLink,
+  generateJobDescriptionFromBriefOnly,
+  enhanceExistingJobDescription
+} from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -61,6 +67,15 @@ export function ChatInterface({ onContentChange, profile, currentJDData }: ChatI
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const [jdGenerationStep, setJdGenerationStep] = useState<string>('initial');
+  
+  // JD Generation state
+  const [jdRoleTitle, setJdRoleTitle] = useState<string>('');
+  const [jdBriefDescription, setJdBriefDescription] = useState<string>('');
+  const [jdOrganizationUrl, setJdOrganizationUrl] = useState<string>('');
+  const [jdOrganizationName, setJdOrganizationName] = useState<string>('');
+  const [jdResponsibilities, setJdResponsibilities] = useState<string>('');
+  const [jdQualifications, setJdQualifications] = useState<string>('');
+  const [jdLocationAndType, setJdLocationAndType] = useState<string>('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -224,7 +239,28 @@ Which would you like to use?`,
         setMessages(prev => [...prev, response]);
         return true;
       }
-    } else if (jdGenerationStep === 'collecting-brief-link' || jdGenerationStep === 'collecting-brief-only') {
+    } else if (jdGenerationStep === 'collecting-brief-link') {
+      // Extract information from user input
+      const roleTitleMatch = input.match(/role title:?\s*([^\n]+)/i) || 
+                            input.match(/title:?\s*([^\n]+)/i) ||
+                            input.match(/^([^:\n]+)/i);
+      
+      const briefDescriptionMatch = input.match(/brief description:?\s*([^\n]+(?:\n(?!organization|url|http)[^\n]+)*)/i) ||
+                                   input.match(/description:?\s*([^\n]+(?:\n(?!organization|url|http)[^\n]+)*)/i);
+      
+      const organizationUrlMatch = input.match(/organization(?:\s+website)?\s+url:?\s*([^\n]+)/i) ||
+                                  input.match(/website:?\s*([^\n]+)/i) ||
+                                  input.match(/https?:\/\/[^\s]+/i);
+      
+      // Set extracted information
+      const roleTitle = roleTitleMatch ? roleTitleMatch[1].trim() : '';
+      const briefDescription = briefDescriptionMatch ? briefDescriptionMatch[1].trim() : input;
+      const organizationUrl = organizationUrlMatch ? organizationUrlMatch[1].trim() : '';
+      
+      setJdRoleTitle(roleTitle);
+      setJdBriefDescription(briefDescription);
+      setJdOrganizationUrl(organizationUrl);
+      
       // Process the collected information
       setJdGenerationStep('generating');
       setIsTyping(true);
@@ -233,42 +269,19 @@ Which would you like to use?`,
         // Update progress flag
         await updateFlag('has_submitted_jd_inputs', true);
 
-        // Simulate AI processing (in real implementation, this would call AI functions)
-        setTimeout(async () => {
-          const generatedJD = `# Program Manager - Climate Action
+        // Call AI to generate job description
+        const generatedJD = await generateJobDescriptionFromBriefAndLink(
+          roleTitle,
+          briefDescription,
+          organizationUrl
+        );
 
-## About [Organization Name]
-[Organization description based on provided information]
+        // Update progress flag
+        await updateFlag('has_generated_jd', true);
 
-## Role Overview
-We are seeking a dynamic Program Manager to lead our climate action initiatives...
-
-## Key Responsibilities
-- Develop and implement climate action programs
-- Coordinate with international partners and stakeholders
-- Monitor and evaluate program effectiveness
-- Manage program budgets and timelines
-
-## Required Qualifications
-- Master's degree in Environmental Science, International Development, or related field
-- 5+ years of experience in program management
-- Strong analytical and communication skills
-- Experience with climate change mitigation strategies
-
-## What We Offer
-- Competitive salary commensurate with experience
-- Comprehensive benefits package
-- Professional development opportunities
-- Flexible working arrangements
-
-*This is a full-time position based in [Location]. We are an equal opportunity employer committed to diversity and inclusion.*`;
-
-          // Update progress flag
-          await updateFlag('has_generated_jd', true);
-
-          const response: Message = {
-            id: Date.now().toString(),
-            content: `🎉 **Job Description Generated Successfully!**
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `🎉 **Job Description Generated Successfully!**
 
 I've created a comprehensive job description based on your input. You can see it in the editor on the right side of your screen.
 
@@ -285,26 +298,128 @@ You can now:
 - **Publish** when ready
 
 Would you like me to refine any particular section or make adjustments to the tone?`,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'progress'
-          };
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'progress'
+        };
 
-          setMessages(prev => [...prev, response]);
-          setIsTyping(false);
-          setJdGenerationStep('generated');
+        setMessages(prev => [...prev, response]);
+        setIsTyping(false);
+        setJdGenerationStep('generated');
 
-          // Update main content with generated JD
-          onContentChange({
-            type: 'post-job-editor',
-            title: 'Job Description Editor',
-            content: 'Generated job description ready for editing',
-            activeTask: 'post-job-generate-jd',
-            step: 'generated',
-            generatedJD: generatedJD
-          });
-        }, 3000);
+        // Update main content with generated JD
+        onContentChange({
+          type: 'post-job-editor',
+          title: 'Job Description Editor',
+          content: 'Generated job description ready for editing',
+          activeTask: 'post-job-generate-jd',
+          step: 'generated',
+          generatedJD: generatedJD
+        });
+      } catch (error) {
+        console.error('Error in JD generation:', error);
+        await updateFlag('jd_generation_failed', true);
+        
+        const errorResponse: Message = {
+          id: Date.now().toString(),
+          content: `I encountered an issue generating your job description. Let me try a different approach or you can provide additional details to help me create a better JD.
 
+Would you like to:
+1. Try again with more specific details
+2. Start over with a different input method
+3. Get help with what information works best
+
+What would you prefer?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setMessages(prev => [...prev, errorResponse]);
+        setIsTyping(false);
+      }
+      return true;
+    } else if (jdGenerationStep === 'collecting-brief-only') {
+      // Extract information from user input
+      const orgNameMatch = input.match(/organization(?:\s+name)?:?\s*([^\n]+)/i);
+      const roleTitleMatch = input.match(/role title:?\s*([^\n]+)/i) || 
+                            input.match(/title:?\s*([^\n]+)/i);
+      
+      const responsibilitiesMatch = input.match(/(?:key\s+)?responsibilities:?\s*([^\n]+(?:\n(?!qualifications|location|contract)[^\n]+)*)/i);
+      
+      const qualificationsMatch = input.match(/(?:required\s+)?qualifications:?\s*([^\n]+(?:\n(?!location|contract)[^\n]+)*)/i);
+      
+      const locationMatch = input.match(/location(?:\s+and\s+contract\s+type)?:?\s*([^\n]+)/i);
+      
+      // Set extracted information
+      const organizationName = orgNameMatch ? orgNameMatch[1].trim() : '';
+      const roleTitle = roleTitleMatch ? roleTitleMatch[1].trim() : '';
+      const responsibilities = responsibilitiesMatch ? responsibilitiesMatch[1].trim() : '';
+      const qualifications = qualificationsMatch ? qualificationsMatch[1].trim() : '';
+      const locationAndType = locationMatch ? locationMatch[1].trim() : '';
+      
+      setJdOrganizationName(organizationName);
+      setJdRoleTitle(roleTitle);
+      setJdResponsibilities(responsibilities);
+      setJdQualifications(qualifications);
+      setJdLocationAndType(locationAndType);
+      
+      // Process the collected information
+      setJdGenerationStep('generating');
+      setIsTyping(true);
+
+      try {
+        // Update progress flag
+        await updateFlag('has_submitted_jd_inputs', true);
+
+        // Call AI to generate job description
+        const generatedJD = await generateJobDescriptionFromBriefOnly(
+          organizationName,
+          roleTitle,
+          responsibilities,
+          qualifications,
+          locationAndType
+        );
+
+        // Update progress flag
+        await updateFlag('has_generated_jd', true);
+
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `🎉 **Job Description Generated Successfully!**
+
+I've created a comprehensive job description based on your input. You can see it in the editor on the right side of your screen.
+
+The JD includes:
+✅ Compelling role overview
+✅ Clear responsibilities and qualifications  
+✅ Professional formatting
+✅ Inclusive language
+
+You can now:
+- **Edit** any section directly
+- **Refine with AI** for specific improvements
+- **Save as Draft** to continue later
+- **Publish** when ready
+
+Would you like me to refine any particular section or make adjustments to the tone?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'progress'
+        };
+
+        setMessages(prev => [...prev, response]);
+        setIsTyping(false);
+        setJdGenerationStep('generated');
+
+        // Update main content with generated JD
+        onContentChange({
+          type: 'post-job-editor',
+          title: 'Job Description Editor',
+          content: 'Generated job description ready for editing',
+          activeTask: 'post-job-generate-jd',
+          step: 'generated',
+          generatedJD: generatedJD
+        });
       } catch (error) {
         console.error('Error in JD generation:', error);
         await updateFlag('jd_generation_failed', true);
@@ -514,13 +629,17 @@ What would you prefer?`,
       try {
         await updateFlag('has_submitted_jd_inputs', true);
         
-        // Simulate processing
-        setTimeout(async () => {
-          await updateFlag('has_generated_jd', true);
-          
-          const response: Message = {
-            id: Date.now().toString(),
-            content: `🎉 **Job Description Analysis Complete!**
+        // Read the file content
+        const fileContent = await readFileAsText(file);
+        
+        // Call AI to enhance the existing JD
+        const enhancedJD = await enhanceExistingJobDescription(fileContent);
+        
+        await updateFlag('has_generated_jd', true);
+        
+        const response: Message = {
+          id: Date.now().toString(),
+          content: `🎉 **Job Description Analysis Complete!**
 
 I've analyzed your uploaded JD and created an enhanced version with:
 ✅ Improved structure and flow
@@ -530,28 +649,43 @@ I've analyzed your uploaded JD and created an enhanced version with:
 ✅ Clear call-to-action
 
 The enhanced job description is now available in the editor. You can review, edit, and refine it further!`,
-            sender: 'assistant',
-            timestamp: new Date(),
-            type: 'progress'
-          };
-          
-          setMessages(prev => [...prev, response]);
-          setIsTyping(false);
-          setJdGenerationStep('generated');
-          
-          onContentChange({
-            type: 'post-job-editor',
-            title: 'Job Description Editor',
-            content: 'Enhanced job description ready for editing',
-            activeTask: 'post-job-generate-jd',
-            step: 'generated',
-            generatedJD: '# Enhanced Job Description\n\n[Processed content from uploaded file]'
-          });
-        }, 2500);
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'progress'
+        };
         
+        setMessages(prev => [...prev, response]);
+        setIsTyping(false);
+        setJdGenerationStep('generated');
+        
+        onContentChange({
+          type: 'post-job-editor',
+          title: 'Job Description Editor',
+          content: 'Enhanced job description ready for editing',
+          activeTask: 'post-job-generate-jd',
+          step: 'generated',
+          generatedJD: enhancedJD
+        });
       } catch (error) {
         console.error('Error processing uploaded JD:', error);
         await updateFlag('jd_generation_failed', true);
+        
+        const errorResponse: Message = {
+          id: Date.now().toString(),
+          content: `I encountered an issue processing your job description file. This could be due to the file format or content.
+
+Would you like to:
+1. Try uploading a different file
+2. Try a different method (Brief + Link or Brief Only)
+3. Get help with what file formats work best
+
+What would you prefer?`,
+          sender: 'assistant',
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        
+        setMessages(prev => [...prev, errorResponse]);
         setIsTyping(false);
       }
       
@@ -587,6 +721,22 @@ The enhanced job description is now available in the editor. You can review, edi
     }
 
     e.target.value = '';
+  };
+
+  // Utility function to read file content as text
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          resolve(event.target.result as string);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsText(file);
+    });
   };
 
   const toggleRecording = () => {
