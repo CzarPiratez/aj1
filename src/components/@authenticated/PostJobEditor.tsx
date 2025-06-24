@@ -31,7 +31,8 @@ import {
   Languages,
   Users,
   Sparkles,
-  Lightbulb
+  Lightbulb,
+  MessageSquare
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,6 +50,12 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { refineJDSection, adjustTone, detectBiasAndSuggestAlternatives } from '@/lib/ai';
@@ -73,6 +80,8 @@ interface JDSection {
   versions: { timestamp: Date; content: string }[];
 }
 
+type ToneType = 'formal' | 'inclusive' | 'neutral' | 'locally-adapted';
+
 export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJobEditorProps) {
   const [jobTitle, setJobTitle] = useState<string>('');
   const [sections, setSections] = useState<JDSection[]>([]);
@@ -87,6 +96,10 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
   const [isSuggestionsOpen, setIsSuggestionsOpen] = useState<boolean>(false);
   const [currentSectionForSuggestions, setCurrentSectionForSuggestions] = useState<string | null>(null);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState<boolean>(false);
+  const [isToneModalOpen, setIsToneModalOpen] = useState<boolean>(false);
+  const [currentSectionForTone, setCurrentSectionForTone] = useState<string | null>(null);
+  const [selectedTone, setSelectedTone] = useState<ToneType | null>(null);
+  const [isChangingTone, setIsChangingTone] = useState<boolean>(false);
   
   // Refs for autosave
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -514,6 +527,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     }, 1500);
   };
 
+  // Open tone selection modal for a section or entire JD
+  const openToneSelectionModal = (id: string | null) => {
+    setCurrentSectionForTone(id);
+    setIsToneModalOpen(true);
+    setSelectedTone(null);
+  };
+
   // Handle AI refinement submission
   const handleAIRefinement = async () => {
     if (!currentSectionForRefinement || !aiRefinementInstructions) {
@@ -602,6 +622,83 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
       });
       lastSavedContentRef.current = JSON.stringify(sections);
     }, 2000);
+  };
+
+  // Handle tone change for a section or entire JD
+  const handleToneChange = async (tone: ToneType) => {
+    setSelectedTone(tone);
+    setIsChangingTone(true);
+    
+    try {
+      if (currentSectionForTone) {
+        // Change tone for a specific section
+        const sectionToUpdate = sections.find(s => s.id === currentSectionForTone);
+        
+        if (!sectionToUpdate) {
+          throw new Error('Section not found');
+        }
+        
+        if (sectionToUpdate.isLocked) {
+          throw new Error('Section is locked');
+        }
+        
+        const updatedContent = await adjustTone(sectionToUpdate.content, tone);
+        
+        // Update the section with the new tone
+        setSections(prevSections => 
+          prevSections.map(section => 
+            section.id === currentSectionForTone 
+              ? { 
+                  ...section, 
+                  content: updatedContent,
+                  versions: [
+                    ...section.versions,
+                    { 
+                      timestamp: new Date(), 
+                      content: updatedContent 
+                    }
+                  ],
+                  isDraft: false
+                } 
+              : section
+          )
+        );
+        
+        toast.success(`Section tone updated to ${tone}`);
+      } else {
+        // Change tone for the entire JD
+        const updatedSections = [...sections];
+        
+        // Process each unlocked section
+        for (let i = 0; i < updatedSections.length; i++) {
+          if (!updatedSections[i].isLocked && updatedSections[i].content.trim()) {
+            const updatedContent = await adjustTone(updatedSections[i].content, tone);
+            
+            updatedSections[i] = {
+              ...updatedSections[i],
+              content: updatedContent,
+              versions: [
+                ...updatedSections[i].versions,
+                { 
+                  timestamp: new Date(), 
+                  content: updatedContent 
+                }
+              ],
+              isDraft: false
+            };
+          }
+        }
+        
+        setSections(updatedSections);
+        toast.success(`All sections updated to ${tone} tone`);
+      }
+    } catch (error) {
+      console.error('Error changing tone:', error);
+      toast.error('Failed to change tone');
+    } finally {
+      setIsChangingTone(false);
+      setIsToneModalOpen(false);
+    }
   };
 
   // Open version history modal for a section
@@ -700,6 +797,38 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
       }));
   };
 
+  // Get tone label for display
+  const getToneLabel = (tone: ToneType): string => {
+    switch (tone) {
+      case 'formal':
+        return 'Formal';
+      case 'inclusive':
+        return 'Inclusive';
+      case 'neutral':
+        return 'Neutral';
+      case 'locally-adapted':
+        return 'Locally Adapted';
+      default:
+        return tone;
+    }
+  };
+
+  // Get tone description for the modal
+  const getToneDescription = (tone: ToneType): string => {
+    switch (tone) {
+      case 'formal':
+        return 'Professional language with traditional corporate structure. Best for established organizations and formal sectors.';
+      case 'inclusive':
+        return 'Welcoming language that appeals to diverse candidates. Emphasizes accessibility and belonging.';
+      case 'neutral':
+        return 'Balanced, straightforward language that focuses on clarity. Suitable for most contexts.';
+      case 'locally-adapted':
+        return 'Culturally appropriate language for the specific region or community. Includes local context and terminology.';
+      default:
+        return '';
+    }
+  };
+
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
       {/* Header */}
@@ -721,6 +850,39 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           </div>
           
           <div className="flex items-center space-x-2">
+            {/* Tone Selector Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9"
+                  style={{ borderColor: '#D8D5D2', color: '#66615C' }}
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Tone
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => openToneSelectionModal(null)}>
+                  <Wand2 className="w-4 h-4 mr-2" style={{ color: '#D5765B' }} />
+                  <span>Change Entire JD Tone</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => {
+                    if (activeSection) {
+                      openToneSelectionModal(activeSection);
+                    } else {
+                      toast.info('Please select a section first');
+                    }
+                  }}
+                >
+                  <Edit3 className="w-4 h-4 mr-2" style={{ color: '#D5765B' }} />
+                  <span>Change Selected Section</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
             <Button
               variant="outline"
               size="sm"
@@ -827,6 +989,18 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                               style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
                             >
                               <Lightbulb className="w-3.5 h-3.5" />
+                            </Button>
+                            
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openToneSelectionModal(section.id)}
+                              className="h-7 w-7 p-0 rounded-full"
+                              title="Change Tone"
+                              disabled={section.isLocked}
+                              style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
                             </Button>
                             
                             <Button
@@ -954,6 +1128,91 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                 <>
                   <Wand2 className="w-4 h-4 mr-2" />
                   Refine with AI
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tone Selection Modal */}
+      <Dialog open={isToneModalOpen} onOpenChange={setIsToneModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
+              Change Tone
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 my-2">
+            <p className="text-sm" style={{ color: '#66615C' }}>
+              Select a tone to rewrite {currentSectionForTone ? 'this section' : 'the entire job description'}.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(['formal', 'inclusive', 'neutral', 'locally-adapted'] as ToneType[]).map((tone) => (
+                <Card 
+                  key={tone}
+                  className={`border cursor-pointer transition-all duration-200 ${selectedTone === tone ? 'border-2' : ''}`}
+                  style={{ 
+                    borderColor: selectedTone === tone ? '#D5765B' : '#D8D5D2',
+                    backgroundColor: selectedTone === tone ? '#FBE4D5' : '#FFFFFF'
+                  }}
+                  onClick={() => setSelectedTone(tone)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-medium" style={{ color: '#3A3936' }}>
+                        {getToneLabel(tone)}
+                      </h3>
+                      
+                      {selectedTone === tone && (
+                        <CheckCircle className="w-4 h-4" style={{ color: '#D5765B' }} />
+                      )}
+                    </div>
+                    
+                    <p className="text-xs font-light" style={{ color: '#66615C' }}>
+                      {getToneDescription(tone)}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            
+            <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
+              <div className="flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800">
+                  Changing the tone will rewrite the content. This action cannot be undone, but previous versions will be saved in the version history.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsToneModalOpen(false)}
+              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
+            >
+              Cancel
+            </Button>
+            
+            <Button
+              onClick={() => selectedTone && handleToneChange(selectedTone)}
+              disabled={isChangingTone || !selectedTone}
+              className="text-white"
+              style={{ backgroundColor: '#D5765B' }}
+            >
+              {isChangingTone ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Changing Tone...
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Apply {selectedTone ? getToneLabel(selectedTone) : ''} Tone
                 </>
               )}
             </Button>
