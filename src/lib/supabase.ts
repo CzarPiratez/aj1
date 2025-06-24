@@ -108,7 +108,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 });
 
-// Database types (updated with complete Phase 3 schema)
+// Database types (updated to match actual schema)
 export interface User {
   id: string;
   email: string;
@@ -135,7 +135,6 @@ export interface UserProgressFlags {
   has_selected_job: boolean;
   has_written_cover_letter: boolean;
   has_started_jd: boolean;
-  has_submitted_jd_inputs: boolean;
   has_generated_jd: boolean;
   jd_generation_failed: boolean;
   has_published_job: boolean;

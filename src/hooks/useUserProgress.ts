@@ -7,7 +7,6 @@ export interface UserProgressFlags {
   has_selected_job: boolean;
   has_written_cover_letter: boolean;
   has_started_jd: boolean;
-  has_submitted_jd_inputs: boolean;
   has_generated_jd: boolean;
   jd_generation_failed: boolean;
   has_published_job: boolean;
@@ -20,7 +19,6 @@ const defaultFlags: UserProgressFlags = {
   has_selected_job: false,
   has_written_cover_letter: false,
   has_started_jd: false,
-  has_submitted_jd_inputs: false,
   has_generated_jd: false,
   jd_generation_failed: false,
   has_published_job: false,
@@ -78,7 +76,6 @@ export function useUserProgress(userId?: string) {
             has_selected_job: false,
             has_written_cover_letter: false,
             has_started_jd: false,
-            has_submitted_jd_inputs: false,
             has_generated_jd: false,
             jd_generation_failed: false,
             has_published_job: false,
@@ -120,7 +117,7 @@ export function useUserProgress(userId?: string) {
         return;
       }
 
-      // Fetch the progress flags (including new Phase 3 flags)
+      // Fetch the progress flags (only columns that exist in the database)
       const { data, error } = await supabase
         .from('user_progress_flags')
         .select(`
@@ -129,7 +126,6 @@ export function useUserProgress(userId?: string) {
           has_selected_job, 
           has_written_cover_letter,
           has_started_jd,
-          has_submitted_jd_inputs,
           has_generated_jd,
           jd_generation_failed,
           has_published_job,
@@ -149,7 +145,6 @@ export function useUserProgress(userId?: string) {
           has_selected_job: data.has_selected_job || false,
           has_written_cover_letter: data.has_written_cover_letter || false,
           has_started_jd: data.has_started_jd || false,
-          has_submitted_jd_inputs: data.has_submitted_jd_inputs || false,
           has_generated_jd: data.has_generated_jd || false,
           jd_generation_failed: data.jd_generation_failed || false,
           has_published_job: data.has_published_job || false,
@@ -275,14 +270,13 @@ export function useUserProgress(userId?: string) {
         return false;
       }
 
-      // Create reset object with all flags set to false (including Phase 3 flags)
+      // Create reset object with all flags set to false (only existing columns)
       const resetFlags = {
         has_uploaded_cv: false,
         has_analyzed_cv: false,
         has_selected_job: false,
         has_written_cover_letter: false,
         has_started_jd: false,
-        has_submitted_jd_inputs: false,
         has_generated_jd: false,
         jd_generation_failed: false,
         has_published_job: false,
