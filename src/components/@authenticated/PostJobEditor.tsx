@@ -179,11 +179,11 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     setSections(reorderedSections);
   };
 
-  // Phase 3: Save Draft Implementation
-  const saveDraft = async () => {
+  // Phase 3: Save Draft Implementation - Modified to return draft ID
+  const saveDraft = async (): Promise<string | null> => {
     if (!profile?.id) {
       toast.error('User not authenticated');
-      return;
+      return null;
     }
 
     setIsSaving(true);
@@ -238,19 +238,23 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         throw result.error;
       }
 
-      setCurrentDraftId(result.data.id);
+      const draftId = result.data.id;
+      setCurrentDraftId(draftId);
       setIsDraft(true);
       toast.success('Draft saved successfully!');
+      
+      return draftId;
       
     } catch (error) {
       console.error('Error saving draft:', error);
       toast.error('Failed to save draft. Please try again.');
+      return null;
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Phase 3: Publish Job Implementation
+  // Phase 3: Publish Job Implementation - Fixed to handle async draft saving
   const publishJob = async () => {
     if (!profile?.id) {
       toast.error('User not authenticated');
@@ -260,10 +264,11 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     setIsPublishing(true);
     
     try {
-      // First save as draft if not already saved
-      if (!currentDraftId) {
-        await saveDraft();
-        if (!currentDraftId) {
+      // Get draft ID - either from current state or by saving first
+      let draftId = currentDraftId;
+      if (!draftId) {
+        draftId = await saveDraft();
+        if (!draftId) {
           throw new Error('Failed to save draft before publishing');
         }
       }
@@ -296,7 +301,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         responsibilities: responsibilities,
         qualifications: qualifications,
         status: 'published',
-        source_draft_id: currentDraftId,
+        source_draft_id: draftId,
         ai_generated: true,
         generation_metadata: {
           tone: selectedTone,
@@ -326,7 +331,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           draft_status: 'ready',
           last_edited_at: new Date().toISOString()
         })
-        .eq('id', currentDraftId);
+        .eq('id', draftId);
 
       // Update user progress flag
       await updateFlag('has_published_job', true);
@@ -460,7 +465,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             <Button
               variant="outline"
               size="sm"
-              onClick={saveDraft}
+              onClick={() => saveDraft()}
               className="h-8"
               disabled={isSaving}
             >
@@ -854,8 +859,8 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      saveDraft();
+                    onClick={async () => {
+                      await saveDraft();
                       closePreviewModal();
                     }}
                     className="h-8"
