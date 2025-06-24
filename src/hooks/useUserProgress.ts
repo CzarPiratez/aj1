@@ -10,6 +10,8 @@ export interface UserProgressFlags {
   has_submitted_jd_inputs: boolean;
   has_generated_jd: boolean;
   jd_generation_failed: boolean;
+  has_published_job: boolean;
+  has_applied_to_job: boolean;
 }
 
 const defaultFlags: UserProgressFlags = {
@@ -21,6 +23,8 @@ const defaultFlags: UserProgressFlags = {
   has_submitted_jd_inputs: false,
   has_generated_jd: false,
   jd_generation_failed: false,
+  has_published_job: false,
+  has_applied_to_job: false,
 };
 
 export function useUserProgress(userId?: string) {
@@ -77,6 +81,8 @@ export function useUserProgress(userId?: string) {
             has_submitted_jd_inputs: false,
             has_generated_jd: false,
             jd_generation_failed: false,
+            has_published_job: false,
+            has_applied_to_job: false,
           });
 
         if (createError) {
@@ -114,7 +120,7 @@ export function useUserProgress(userId?: string) {
         return;
       }
 
-      // Fetch the progress flags
+      // Fetch the progress flags (including new Phase 3 flags)
       const { data, error } = await supabase
         .from('user_progress_flags')
         .select(`
@@ -125,7 +131,9 @@ export function useUserProgress(userId?: string) {
           has_started_jd,
           has_submitted_jd_inputs,
           has_generated_jd,
-          jd_generation_failed
+          jd_generation_failed,
+          has_published_job,
+          has_applied_to_job
         `)
         .eq('user_id', userId)
         .single();
@@ -144,6 +152,8 @@ export function useUserProgress(userId?: string) {
           has_submitted_jd_inputs: data.has_submitted_jd_inputs || false,
           has_generated_jd: data.has_generated_jd || false,
           jd_generation_failed: data.jd_generation_failed || false,
+          has_published_job: data.has_published_job || false,
+          has_applied_to_job: data.has_applied_to_job || false,
         });
       }
     } catch (error) {
@@ -265,7 +275,7 @@ export function useUserProgress(userId?: string) {
         return false;
       }
 
-      // Create reset object with all flags set to false
+      // Create reset object with all flags set to false (including Phase 3 flags)
       const resetFlags = {
         has_uploaded_cv: false,
         has_analyzed_cv: false,
@@ -275,6 +285,8 @@ export function useUserProgress(userId?: string) {
         has_submitted_jd_inputs: false,
         has_generated_jd: false,
         jd_generation_failed: false,
+        has_published_job: false,
+        has_applied_to_job: false,
       };
 
       const { error } = await supabase

@@ -217,6 +217,7 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
                     generatedJD={mainContent.generatedJD}
                     activeTask={mainContent.activeTask}
                     step={mainContent.step}
+                    profile={profile}
                   />
                 ) : (
                   <MainContentRenderer content={mainContent} />

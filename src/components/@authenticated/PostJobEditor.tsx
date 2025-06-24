@@ -20,7 +20,8 @@ import {
   GripVertical,
   Plus,
   X,
-  ExternalLink
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,13 +32,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { supabase } from '@/lib/supabase';
+import { useUserProgress } from '@/hooks/useUserProgress';
+import { toast } from 'sonner';
 
 interface PostJobEditorProps {
   generatedJD?: string;
   activeTask?: string;
   step?: string;
+  profile?: any;
 }
 
 interface JDSection {
@@ -49,7 +53,7 @@ interface JDSection {
   order: number;
 }
 
-export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorProps) {
+export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJobEditorProps) {
   const [sections, setSections] = useState<JDSection[]>([]);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -58,6 +62,12 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
   const [readabilityScore, setReadabilityScore] = useState(85);
   const [deiScore, setDeiScore] = useState(92);
   const [draggedSection, setDraggedSection] = useState<string | null>(null);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+
+  // Get user progress hook
+  const { updateFlag } = useUserProgress(profile?.id);
 
   // Initialize sections when JD is generated
   useEffect(() => {
@@ -169,14 +179,169 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
     setSections(reorderedSections);
   };
 
+  // Phase 3: Save Draft Implementation
   const saveDraft = async () => {
-    console.log('Saving draft...');
-    setIsDraft(true);
+    if (!profile?.id) {
+      toast.error('User not authenticated');
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      // Compile sections back into full JD content
+      const fullContent = sections
+        .sort((a, b) => a.order - b.order)
+        .map(section => `# ${section.title}\n\n${section.content}`)
+        .join('\n\n');
+
+      // Extract basic job information from sections
+      const titleSection = sections.find(s => s.title.toLowerCase().includes('title') || s.order === 0);
+      const title = titleSection?.content.split('\n')[0] || 'Untitled Job';
+
+      const draftData = {
+        user_id: profile.id,
+        title: title,
+        description: fullContent,
+        draft_status: 'draft',
+        ai_generated: true,
+        generation_metadata: {
+          tone: selectedTone,
+          readability_score: readabilityScore,
+          dei_score: deiScore,
+          sections_count: sections.length,
+          generated_at: new Date().toISOString()
+        },
+        last_edited_at: new Date().toISOString()
+      };
+
+      let result;
+      if (currentDraftId) {
+        // Update existing draft
+        result = await supabase
+          .from('job_drafts')
+          .update(draftData)
+          .eq('id', currentDraftId)
+          .eq('user_id', profile.id)
+          .select()
+          .single();
+      } else {
+        // Create new draft
+        result = await supabase
+          .from('job_drafts')
+          .insert(draftData)
+          .select()
+          .single();
+      }
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      setCurrentDraftId(result.data.id);
+      setIsDraft(true);
+      toast.success('Draft saved successfully!');
+      
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      toast.error('Failed to save draft. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
+  // Phase 3: Publish Job Implementation
   const publishJob = async () => {
-    console.log('Publishing job...');
-    setIsDraft(false);
+    if (!profile?.id) {
+      toast.error('User not authenticated');
+      return;
+    }
+
+    setIsPublishing(true);
+    
+    try {
+      // First save as draft if not already saved
+      if (!currentDraftId) {
+        await saveDraft();
+        if (!currentDraftId) {
+          throw new Error('Failed to save draft before publishing');
+        }
+      }
+
+      // Compile sections back into full JD content
+      const fullContent = sections
+        .sort((a, b) => a.order - b.order)
+        .map(section => `# ${section.title}\n\n${section.content}`)
+        .join('\n\n');
+
+      // Extract job information from sections for structured data
+      const titleSection = sections.find(s => s.title.toLowerCase().includes('title') || s.order === 0);
+      const title = titleSection?.content.split('\n')[0] || 'Untitled Job';
+      
+      const orgSection = sections.find(s => s.title.toLowerCase().includes('about') || s.title.toLowerCase().includes('organization'));
+      const organizationName = orgSection?.content.split('\n')[0] || '';
+
+      const responsibilitiesSection = sections.find(s => s.title.toLowerCase().includes('responsibilities') || s.title.toLowerCase().includes('duties'));
+      const responsibilities = responsibilitiesSection?.content || '';
+
+      const qualificationsSection = sections.find(s => s.title.toLowerCase().includes('qualifications') || s.title.toLowerCase().includes('requirements'));
+      const qualifications = qualificationsSection?.content || '';
+
+      // Create published job record
+      const jobData = {
+        user_id: profile.id,
+        title: title,
+        description: fullContent,
+        organization_name: organizationName,
+        responsibilities: responsibilities,
+        qualifications: qualifications,
+        status: 'published',
+        source_draft_id: currentDraftId,
+        ai_generated: true,
+        generation_metadata: {
+          tone: selectedTone,
+          readability_score: readabilityScore,
+          dei_score: deiScore,
+          sections_count: sections.length,
+          published_from_editor: true,
+          published_at: new Date().toISOString()
+        },
+        published_at: new Date().toISOString()
+      };
+
+      const { data: publishedJob, error: publishError } = await supabase
+        .from('jobs')
+        .insert(jobData)
+        .select()
+        .single();
+
+      if (publishError) {
+        throw publishError;
+      }
+
+      // Update draft status to indicate it's been published
+      await supabase
+        .from('job_drafts')
+        .update({ 
+          draft_status: 'ready',
+          last_edited_at: new Date().toISOString()
+        })
+        .eq('id', currentDraftId);
+
+      // Update user progress flag
+      await updateFlag('has_published_job', true);
+
+      setIsDraft(false);
+      toast.success('Job published successfully! It\'s now live and accepting applications.');
+      
+      console.log('✅ Job published:', publishedJob);
+      
+    } catch (error) {
+      console.error('Error publishing job:', error);
+      toast.error('Failed to publish job. Please try again.');
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   const openPreviewModal = () => {
@@ -297,9 +462,19 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
               size="sm"
               onClick={saveDraft}
               className="h-8"
+              disabled={isSaving}
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Draft
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Draft
+                </>
+              )}
             </Button>
             
             <Button
@@ -307,9 +482,19 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
               onClick={publishJob}
               className="h-8 text-white"
               style={{ backgroundColor: '#D5765B' }}
+              disabled={isPublishing}
             >
-              <Send className="w-4 h-4 mr-2" />
-              Publish Job
+              {isPublishing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Publishing...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Publish Job
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -565,8 +750,17 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
           </div>
           
           <div className="flex items-center space-x-2">
-            <CheckCircle className="w-3 h-3 text-green-500" />
-            <span>Auto-saved</span>
+            {currentDraftId ? (
+              <>
+                <CheckCircle className="w-3 h-3 text-green-500" />
+                <span>Saved as draft</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3 h-3 text-amber-500" />
+                <span>Not saved yet</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -665,9 +859,19 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
                       closePreviewModal();
                     }}
                     className="h-8"
+                    disabled={isSaving}
                   >
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Draft
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save Draft
+                      </>
+                    )}
                   </Button>
                   
                   <Button
@@ -678,9 +882,19 @@ export function PostJobEditor({ generatedJD, activeTask, step }: PostJobEditorPr
                     }}
                     className="h-8 text-white"
                     style={{ backgroundColor: '#D5765B' }}
+                    disabled={isPublishing}
                   >
-                    <Send className="w-4 h-4 mr-2" />
-                    Publish Job
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Publishing...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Publish Job
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>

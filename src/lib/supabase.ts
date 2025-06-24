@@ -108,7 +108,7 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 });
 
-// Database types (updated with JD-related flags)
+// Database types (updated with complete Phase 3 schema)
 export interface User {
   id: string;
   email: string;
@@ -138,6 +138,8 @@ export interface UserProgressFlags {
   has_submitted_jd_inputs: boolean;
   has_generated_jd: boolean;
   jd_generation_failed: boolean;
+  has_published_job: boolean;
+  has_applied_to_job: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +169,53 @@ export interface JobDraft {
   ai_generated: boolean;
   generation_metadata: any;
   last_edited_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Job {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  organization_name?: string;
+  organization_url?: string;
+  org_name?: string;
+  org_website?: string;
+  responsibilities?: string;
+  qualifications?: string;
+  sdgs?: string[];
+  sector?: string;
+  contract_type?: string;
+  location?: string;
+  how_to_apply?: string;
+  application_end_date?: string;
+  salary_range?: string;
+  benefits?: string;
+  status: 'published' | 'archived' | 'closed';
+  published_at: string;
+  is_template: boolean;
+  template_name?: string;
+  source_draft_id?: string;
+  ai_generated: boolean;
+  generation_metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Application {
+  id: string;
+  user_id: string;
+  job_id: string;
+  cover_letter?: string;
+  additional_notes?: string;
+  cv_file_url?: string;
+  status: 'pending' | 'reviewed' | 'shortlisted' | 'interviewed' | 'accepted' | 'rejected' | 'withdrawn';
+  applied_at: string;
+  reviewed_at?: string;
+  status_changed_at: string;
+  ai_assisted: boolean;
+  ai_metadata: any;
   created_at: string;
   updated_at: string;
 }

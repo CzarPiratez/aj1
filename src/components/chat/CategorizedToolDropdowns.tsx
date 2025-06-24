@@ -169,9 +169,9 @@ export function CategorizedToolDropdowns({
       label: 'Match Candidates',
       icon: Users,
       description: 'Find the best candidates for your posted jobs',
-      isActive: () => false,
-      inactiveMessage: "🚧 This feature is currently under construction. Please check back later!",
-      action: () => onToolAction('match-candidates', '🚧 This feature is currently under construction. Please check back later!')
+      isActive: (flags) => flags.has_published_job,
+      inactiveMessage: "To match candidates to your jobs, you'll need to publish a job first. Try using the 'Post a Job / Generate JD' tool to create and publish a job posting.",
+      action: () => onToolAction('match-candidates', 'Help me find candidates for my job posting')
     }
   ];
 
