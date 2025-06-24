@@ -30,7 +30,8 @@ import {
   Heart,
   Languages,
   Users,
-  Sparkles
+  Sparkles,
+  Lightbulb
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,6 +53,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { refineJDSection, adjustTone, detectBiasAndSuggestAlternatives } from '@/lib/ai';
 import { JDPreviewModal } from './jobs/JDPreviewModal';
+import { JDSuggestions } from './jobs/JDSuggestions';
 
 interface PostJobEditorProps {
   generatedJD?: string;
@@ -82,6 +84,9 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
   const [currentSectionForRefinement, setCurrentSectionForRefinement] = useState<string | null>(null);
   const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState<boolean>(false);
   const [currentSectionForHistory, setCurrentSectionForHistory] = useState<string | null>(null);
+  const [isSuggestionsOpen, setIsSuggestionsOpen] = useState<boolean>(false);
+  const [currentSectionForSuggestions, setCurrentSectionForSuggestions] = useState<string | null>(null);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState<boolean>(false);
   
   // Refs for autosave
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -497,6 +502,18 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     setIsRefinementModalOpen(true);
   };
 
+  // Open AI suggestions modal for a section
+  const openAISuggestionsModal = (id: string) => {
+    setCurrentSectionForSuggestions(id);
+    setIsSuggestionsLoading(true);
+    setIsSuggestionsOpen(true);
+    
+    // Simulate AI loading time
+    setTimeout(() => {
+      setIsSuggestionsLoading(false);
+    }, 1500);
+  };
+
   // Handle AI refinement submission
   const handleAIRefinement = async () => {
     if (!currentSectionForRefinement || !aiRefinementInstructions) {
@@ -547,6 +564,44 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     } finally {
       setIsAIRefining(false);
     }
+  };
+
+  // Handle applying a suggestion to a section
+  const handleApplySuggestion = (newContent: string) => {
+    if (!currentSectionForSuggestions) return;
+    
+    // Update the section with the suggested content
+    setSections(prevSections => 
+      prevSections.map(section => 
+        section.id === currentSectionForSuggestions 
+          ? { 
+              ...section, 
+              content: newContent,
+              versions: [
+                ...section.versions,
+                { 
+                  timestamp: new Date(), 
+                  content: newContent 
+                }
+              ],
+              isDraft: false
+            } 
+          : section
+      )
+    );
+    
+    // Set up autosave
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    
+    autoSaveTimerRef.current = setTimeout(() => {
+      // Here you would save to database
+      toast.success('Changes saved automatically', {
+        duration: 2000,
+      });
+      lastSavedContentRef.current = JSON.stringify(sections);
+    }, 2000);
   };
 
   // Open version history modal for a section
@@ -765,6 +820,18 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => openAISuggestionsModal(section.id)}
+                              className="h-7 w-7 p-0 rounded-full"
+                              title="AI Suggestions"
+                              disabled={section.isLocked}
+                              style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
+                            >
+                              <Lightbulb className="w-3.5 h-3.5" />
+                            </Button>
+                            
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => openAIRefinementModal(section.id)}
                               className="h-7 w-7 p-0 rounded-full"
                               title="Improve with AI"
@@ -964,6 +1031,18 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Suggestions Modal */}
+      {currentSectionForSuggestions && (
+        <JDSuggestions
+          isOpen={isSuggestionsOpen}
+          onClose={() => setIsSuggestionsOpen(false)}
+          sectionTitle={sections.find(s => s.id === currentSectionForSuggestions)?.title || ''}
+          sectionContent={sections.find(s => s.id === currentSectionForSuggestions)?.content || ''}
+          onApplySuggestion={handleApplySuggestion}
+          isLoading={isSuggestionsLoading}
+        />
+      )}
 
       {/* Preview Modal */}
       <JDPreviewModal
