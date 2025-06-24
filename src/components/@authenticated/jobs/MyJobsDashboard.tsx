@@ -19,7 +19,8 @@ import {
   XCircle,
   Loader2,
   ExternalLink,
-  FileText
+  FileText,
+  Building
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -350,90 +351,92 @@ export function MyJobsDashboard({ profile, subType = 'all' }: MyJobsDashboardPro
         </div>
       </div>
 
-      {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="p-6">
-          <TabsContent value="active" className="mt-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
-              </div>
-            ) : filteredJobs.length === 0 ? (
-              <EmptyState 
-                title="No active jobs found"
-                description="You don't have any active job postings yet. Create your first job posting to start receiving applications."
-                icon={Briefcase}
-                actionLabel="Create Job Posting"
-                onAction={handleCreateNewJob}
-              />
-            ) : (
-              <div className="grid gap-4">
-                {filteredJobs.map(job => (
-                  <JobCard 
-                    key={job.id}
-                    job={job}
-                    onEdit={() => handleEditJob(job.id, false)}
-                    onArchive={() => handleArchiveJob(job.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="archived" className="mt-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
-              </div>
-            ) : filteredJobs.length === 0 ? (
-              <EmptyState 
-                title="No archived jobs found"
-                description="You don't have any archived job postings yet. Active jobs can be archived when they're no longer accepting applications."
-                icon={Archive}
-              />
-            ) : (
-              <div className="grid gap-4">
-                {filteredJobs.map(job => (
-                  <JobCard 
-                    key={job.id}
-                    job={job}
-                    onEdit={() => handleEditJob(job.id, false)}
-                    isArchived
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="drafts" className="mt-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
-              </div>
-            ) : filteredDrafts.length === 0 ? (
-              <EmptyState 
-                title="No draft jobs found"
-                description="You don't have any job drafts yet. Start creating a job posting and save it as a draft to continue later."
-                icon={FileText}
-                actionLabel="Create Draft"
-                onAction={handleCreateNewJob}
-              />
-            ) : (
-              <div className="grid gap-4">
-                {filteredDrafts.map(draft => (
-                  <DraftCard 
-                    key={draft.id}
-                    draft={draft}
-                    onEdit={() => handleEditJob(draft.id, true)}
-                    onPublish={() => handlePublishJob(draft.id)}
-                    onDelete={() => handleDeleteDraft(draft.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-        </div>
-      </ScrollArea>
+      {/* Content - Fixed Tabs structure */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+        <ScrollArea className="flex-1">
+          <div className="p-6">
+            <TabsContent value="active" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
+                </div>
+              ) : filteredJobs.length === 0 ? (
+                <EmptyState 
+                  title="No active jobs found"
+                  description="You don't have any active job postings yet. Create your first job posting to start receiving applications."
+                  icon={Briefcase}
+                  actionLabel="Create Job Posting"
+                  onAction={handleCreateNewJob}
+                />
+              ) : (
+                <div className="grid gap-4">
+                  {filteredJobs.map(job => (
+                    <JobCard 
+                      key={job.id}
+                      job={job}
+                      onEdit={() => handleEditJob(job.id, false)}
+                      onArchive={() => handleArchiveJob(job.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="archived" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
+                </div>
+              ) : filteredJobs.length === 0 ? (
+                <EmptyState 
+                  title="No archived jobs found"
+                  description="You don't have any archived job postings yet. Active jobs can be archived when they're no longer accepting applications."
+                  icon={Archive}
+                />
+              ) : (
+                <div className="grid gap-4">
+                  {filteredJobs.map(job => (
+                    <JobCard 
+                      key={job.id}
+                      job={job}
+                      onEdit={() => handleEditJob(job.id, false)}
+                      isArchived
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="drafts" className="mt-0">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
+                </div>
+              ) : filteredDrafts.length === 0 ? (
+                <EmptyState 
+                  title="No draft jobs found"
+                  description="You don't have any job drafts yet. Start creating a job posting and save it as a draft to continue later."
+                  icon={FileText}
+                  actionLabel="Create Draft"
+                  onAction={handleCreateNewJob}
+                />
+              ) : (
+                <div className="grid gap-4">
+                  {filteredDrafts.map(draft => (
+                    <DraftCard 
+                      key={draft.id}
+                      draft={draft}
+                      onEdit={() => handleEditJob(draft.id, true)}
+                      onPublish={() => handlePublishJob(draft.id)}
+                      onDelete={() => handleDeleteDraft(draft.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </div>
+        </ScrollArea>
+      </Tabs>
     </div>
   );
 }

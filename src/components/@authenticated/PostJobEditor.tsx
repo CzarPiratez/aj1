@@ -254,7 +254,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     }
   };
 
-  // Phase 3: Publish Job Implementation - Fixed to handle async draft saving
+  // Phase 3: Publish Job Implementation - Fixed to use returned draft ID
   const publishJob = async () => {
     if (!profile?.id) {
       toast.error('User not authenticated');
