@@ -39,11 +39,12 @@ interface Tool {
   isActive: (flags: UserProgressFlags) => boolean;
   inactiveMessage: string;
   action: () => void;
+  autoSubmit?: boolean;
 }
 
 interface CategorizedToolDropdownsProps {
   flags: UserProgressFlags;
-  onToolAction: (toolId: string, message: string) => void;
+  onToolAction: (toolId: string, message: string, autoSubmit?: boolean) => void;
   onInactiveToolClick: (message: string) => void;
   disabled?: boolean;
 }
@@ -150,8 +151,9 @@ export function CategorizedToolDropdowns({
       description: 'Create and post job descriptions with AI assistance',
       isActive: () => true,
       inactiveMessage: '',
+      autoSubmit: true,
       action: () => {
-        onToolAction('post-job-generate-jd', 'I want to create a job description with AI assistance')
+        onToolAction('post-job-generate-jd', 'I want to create a job description with AI assistance', true);
       }
     },
     {

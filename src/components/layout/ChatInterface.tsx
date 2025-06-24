@@ -341,14 +341,14 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
 
   const canSend = input.trim().length > 0 && !isTyping;
 
-  const handleToolAction = (toolId: string, message: string) => {
+  const handleToolAction = async (toolId: string, message: string, autoSubmit = false) => {
     // Set active tool ID for context-aware responses
     setActiveToolId(toolId);
     
     // For Post a Job tool, update progress flag and show AI-generated response
     if (toolId === 'post-job-generate-jd') {
       if (profile?.id) {
-        updateFlag('has_started_jd', true);
+        await updateFlag('has_started_jd', true);
       }
       
       // Set input but don't auto-send
@@ -362,6 +362,86 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
         activeTask: 'post-job-generate-jd',
         step: 'initial'
       });
+      
+      // Auto-submit if requested (for AI-controlled tools)
+      if (autoSubmit) {
+        // First, add the user message
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          content: message,
+          sender: 'user',
+          timestamp: new Date(),
+        };
+        
+        setMessages(prev => [...prev, userMessage]);
+        setInput(''); // Clear input field
+        setIsTyping(true);
+        
+        // Then generate and add the AI response
+        try {
+          // Prepare conversation context
+          const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
+          
+          // Add system prompt for Post a Job tool
+          const systemPrompt = `You are an expert AI assistant helping users post jobs on AidJobs — a platform for the nonprofit, humanitarian, and development sector. You are guiding them to generate a high-quality job description (JD) using one of three allowed input methods:
+
+1. Paste a job brief + organization or project website link  
+2. Paste a job brief only  
+3. Upload an old JD file  
+
+You must only accept and process one of these three input types. Guide the user naturally based on their input.
+
+Your tone is helpful, respectful, and professional — never robotic. Never use code blocks, formatting symbols, or markdown.
+
+Always follow these rules:
+- When the tool starts, ask: "How would you like to begin?" and list the three options.
+- If the user enters valid input, confirm and begin JD generation.
+- If input is partial or unclear, gently clarify what's needed.
+- If the user enters irrelevant or unrelated input, gently redirect.
+- If the user asks something off-topic, answer briefly and bring them back.
+- If they say "cancel" or "start over," confirm and reset the chat flow.
+- If a JD has already been generated, help them refine or publish it.
+- If the AI fails, respond with: "The assistant is currently offline. You can still edit your JD manually or try again shortly."
+
+Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
+          
+          // Generate AI response
+          const aiResponse = await generateChatResponse(
+            message, 
+            conversationContext, 
+            profile,
+            systemPrompt
+          );
+          
+          const responseMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: aiResponse,
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => [...prev, responseMessage]);
+        } catch (error) {
+          console.error('Error getting AI response:', error);
+          
+          // Special fallback for Post a Job tool
+          const fallbackMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            content: "The assistant is currently offline. You can still edit your JD manually or try again shortly.",
+            sender: 'assistant',
+            timestamp: new Date(),
+          };
+          
+          setMessages(prev => [...prev, fallbackMessage]);
+          
+          // Set jd_generation_failed flag
+          if (profile?.id) {
+            await updateFlag('jd_generation_failed', true);
+          }
+        } finally {
+          setIsTyping(false);
+        }
+      }
     } else {
       // For other tools, just set the input
       setInput(message);
