@@ -590,9 +590,10 @@ ${currentInterests}`;
 export async function generateChatResponse(
   userMessage: string,
   conversationContext: string = '',
-  userProfile?: any
+  userProfile?: any,
+  systemPromptOverride?: string
 ): Promise<string> {
-  let systemPrompt = `You are an AI assistant for AidJobs, a nonprofit recruitment platform. You help with:
+  let systemPrompt = systemPromptOverride || `You are an AI assistant for AidJobs, a nonprofit recruitment platform. You help with:
 
 - Job searching and career advice
 - CV and cover letter assistance

@@ -57,6 +57,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
+  const [activeToolId, setActiveToolId] = useState<string | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -111,8 +112,42 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
 
     // Use AI service for enhanced responses
     try {
+      // Prepare conversation context
       const conversationContext = messages.slice(-5).map(m => `${m.sender}: ${m.content}`).join('\n');
-      const aiResponse = await generateChatResponse(currentInput, conversationContext, profile);
+      
+      // Add system prompt for Post a Job tool if active
+      let systemPrompt = undefined;
+      if (activeToolId === 'post-job-generate-jd') {
+        systemPrompt = `You are an expert AI assistant helping users post jobs on AidJobs — a platform for the nonprofit, humanitarian, and development sector. You are guiding them to generate a high-quality job description (JD) using one of three allowed input methods:
+
+1. Paste a job brief + organization or project website link  
+2. Paste a job brief only  
+3. Upload an old JD file  
+
+You must only accept and process one of these three input types. Guide the user naturally based on their input.
+
+Your tone is helpful, respectful, and professional — never robotic. Never use code blocks, formatting symbols, or markdown.
+
+Always follow these rules:
+- When the tool starts, ask: "How would you like to begin?" and list the three options.
+- If the user enters valid input, confirm and begin JD generation.
+- If input is partial or unclear, gently clarify what's needed.
+- If the user enters irrelevant or unrelated input, gently redirect.
+- If the user asks something off-topic, answer briefly and bring them back.
+- If they say "cancel" or "start over," confirm and reset the chat flow.
+- If a JD has already been generated, help them refine or publish it.
+- If the AI fails, respond with: "The assistant is currently offline. You can still edit your JD manually or try again shortly."
+
+Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
+      }
+      
+      // Generate AI response
+      const aiResponse = await generateChatResponse(
+        currentInput, 
+        conversationContext, 
+        profile,
+        systemPrompt
+      );
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -127,15 +162,33 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     } catch (error) {
       console.error('Error getting AI response:', error);
       
-      // Fallback to simple response
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: generateSimpleResponse(currentInput),
-        sender: 'assistant',
-        timestamp: new Date(),
-      };
+      // Special fallback for Post a Job tool
+      if (activeToolId === 'post-job-generate-jd') {
+        const fallbackMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: "The assistant is currently offline. You can still edit your JD manually or try again shortly.",
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+        
+        setMessages(prev => [...prev, fallbackMessage]);
+        
+        // Set jd_generation_failed flag
+        if (profile?.id) {
+          await updateFlag('jd_generation_failed', true);
+        }
+      } else {
+        // Fallback to simple response for other tools
+        const aiResponse: Message = {
+          id: (Date.now() + 1).toString(),
+          content: generateSimpleResponse(currentInput),
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
 
-      setMessages(prev => [...prev, aiResponse]);
+        setMessages(prev => [...prev, aiResponse]);
+      }
+      
       updateMainContent(currentInput);
       await updateProgressBasedOnInput(currentInput);
     } finally {
@@ -289,15 +342,30 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const canSend = input.trim().length > 0 && !isTyping;
 
   const handleToolAction = (toolId: string, message: string) => {
+    // Set active tool ID for context-aware responses
+    setActiveToolId(toolId);
+    
+    // For Post a Job tool, update progress flag and show AI-generated response
     if (toolId === 'post-job-generate-jd') {
-      // Update progress flag
       if (profile?.id) {
         updateFlag('has_started_jd', true);
       }
+      
+      // Set input but don't auto-send
+      setInput(message);
+      
+      // Show the editor panel
+      onContentChange({
+        type: 'post-job-editor',
+        title: 'Job Description Editor',
+        content: 'AI-powered job description generation and editing',
+        activeTask: 'post-job-generate-jd',
+        step: 'initial'
+      });
+    } else {
+      // For other tools, just set the input
+      setInput(message);
     }
-    
-    // For all tools, populate input field with the message
-    setInput(message);
   };
 
   const handleInactiveToolClick = (message: string) => {
