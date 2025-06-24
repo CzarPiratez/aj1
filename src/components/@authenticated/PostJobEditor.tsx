@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Save, 
@@ -72,14 +72,20 @@ interface JDSection {
   type: string;
 }
 
+interface DragItem {
+  id: string;
+  index: number;
+}
+
 export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJobEditorProps) {
   const [sections, setSections] = useState<JDSection[]>([]);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [isDraft, setIsDraft] = useState(true);
-  const [draggedSection, setDraggedSection] = useState<string | null>(null);
+  const [draggedSectionId, setDraggedSectionId] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+  const [dragOverSectionId, setDragOverSectionId] = useState<string | null>(null);
 
   // Get user progress hook
   const { updateFlag } = useUserProgress(profile?.id);
@@ -427,19 +433,75 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     setSections(prev => [...prev, newSection]);
   };
 
-  const reorderSections = (dragIndex: number, hoverIndex: number) => {
-    const draggedSection = sections[dragIndex];
-    const newSections = [...sections];
-    newSections.splice(dragIndex, 1);
-    newSections.splice(hoverIndex, 0, draggedSection);
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, sectionId: string) => {
+    e.dataTransfer.setData('text/plain', sectionId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedSectionId(sectionId);
     
-    // Update order values
+    // Add a class to the dragged element for styling
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.classList.add('dragging');
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent, sectionId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (draggedSectionId !== sectionId) {
+      setDragOverSectionId(sectionId);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverSectionId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetSectionId: string) => {
+    e.preventDefault();
+    
+    const sourceSectionId = e.dataTransfer.getData('text/plain');
+    
+    if (sourceSectionId === targetSectionId) {
+      return;
+    }
+    
+    // Find the indices of the source and target sections
+    const sourceIndex = sections.findIndex(section => section.id === sourceSectionId);
+    const targetIndex = sections.findIndex(section => section.id === targetSectionId);
+    
+    if (sourceIndex === -1 || targetIndex === -1) {
+      return;
+    }
+    
+    // Create a new array with the reordered sections
+    const newSections = [...sections];
+    const [movedSection] = newSections.splice(sourceIndex, 1);
+    newSections.splice(targetIndex, 0, movedSection);
+    
+    // Update the order property of each section
     const reorderedSections = newSections.map((section, index) => ({
       ...section,
       order: index
     }));
     
     setSections(reorderedSections);
+    setDraggedSectionId(null);
+    setDragOverSectionId(null);
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    e.preventDefault();
+    
+    // Remove the dragging class
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.classList.remove('dragging');
+    }
+    
+    setDraggedSectionId(null);
+    setDragOverSectionId(null);
   };
 
   // Phase 3: Save Draft Implementation - Modified to return draft ID
@@ -470,7 +532,8 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         ai_generated: true,
         generation_metadata: {
           sections_count: sections.length,
-          generated_at: new Date().toISOString()
+          generated_at: new Date().toISOString(),
+          section_order: sections.map(s => ({ id: s.id, type: s.type, order: s.order }))
         },
         last_edited_at: new Date().toISOString()
       };
@@ -566,7 +629,8 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         generation_metadata: {
           sections_count: sections.length,
           published_from_editor: true,
-          published_at: new Date().toISOString()
+          published_at: new Date().toISOString(),
+          section_order: sections.map(s => ({ id: s.id, type: s.type, order: s.order }))
         },
         published_at: new Date().toISOString()
       };
@@ -864,24 +928,28 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    draggable
-                    onDragStart={() => setDraggedSection(section.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => {
-                      if (draggedSection && draggedSection !== section.id) {
-                        const dragIndex = sections.findIndex(s => s.id === draggedSection);
-                        const hoverIndex = sections.findIndex(s => s.id === section.id);
-                        reorderSections(dragIndex, hoverIndex);
-                      }
-                      setDraggedSection(null);
-                    }}
-                    className="cursor-move"
+                    draggable={true}
+                    onDragStart={(e) => handleDragStart(e, section.id)}
+                    onDragOver={(e) => handleDragOver(e, section.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, section.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`transition-all duration-200 ${
+                      dragOverSectionId === section.id ? 'transform scale-[1.02] shadow-md' : ''
+                    } ${
+                      draggedSectionId === section.id ? 'opacity-50' : 'opacity-100'
+                    }`}
                   >
                     <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <GripVertical className="w-4 h-4" style={{ color: '#66615C' }} />
+                            <div 
+                              className="cursor-move p-1 rounded hover:bg-gray-100 transition-colors duration-200"
+                              title="Drag to reorder"
+                            >
+                              <GripVertical className="w-4 h-4" style={{ color: '#66615C' }} />
+                            </div>
                             <SectionIcon className="w-4 h-4" style={{ color: '#D5765B' }} />
                             <CardTitle className="text-base" style={{ color: '#3A3936' }}>
                               {section.isEditing ? (
@@ -1148,6 +1216,12 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      <style jsx global>{`
+        .dragging {
+          opacity: 0.5;
+        }
+      `}</style>
     </div>
   );
 }
