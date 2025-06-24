@@ -285,4 +285,4 @@ export function CategorizedToolDropdowns({
       {renderDropdown(organizationTools, 'Organization', Building, 'Organization and hiring tools')}
     </div>
   );
-};
+}
