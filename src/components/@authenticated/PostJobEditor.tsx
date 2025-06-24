@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence, Reorder } from 'framer-motion';
+import { motion, Reorder } from 'framer-motion';
 import { 
   Briefcase, 
   Edit3, 
@@ -32,7 +32,9 @@ import {
   Users,
   Sparkles,
   Lightbulb,
-  MessageSquare
+  MessageSquare,
+  Send,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,7 +49,6 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle,
-  DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
 import {
@@ -59,14 +60,13 @@ import {
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { refineJDSection, adjustTone, detectBiasAndSuggestAlternatives } from '@/lib/ai';
-import { JDPreviewModal } from './jobs/JDPreviewModal';
-import { JDSuggestions } from './jobs/JDSuggestions';
 
 interface PostJobEditorProps {
   generatedJD?: string;
   activeTask?: string;
   step?: string;
   profile?: any;
+  draftId?: string;
 }
 
 interface JDSection {
@@ -75,14 +75,13 @@ interface JDSection {
   content: string;
   isLocked: boolean;
   isEditing: boolean;
-  isDraft: boolean;
-  icon: React.ComponentType<any>;
-  versions: { timestamp: Date; content: string }[];
+  icon?: React.ComponentType<any>;
+  versions?: { timestamp: Date; content: string }[];
 }
 
 type ToneType = 'formal' | 'inclusive' | 'neutral' | 'locally-adapted';
 
-export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJobEditorProps) {
+export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId }: PostJobEditorProps) {
   const [jobTitle, setJobTitle] = useState<string>('');
   const [sections, setSections] = useState<JDSection[]>([]);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
@@ -100,20 +99,70 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
   const [currentSectionForTone, setCurrentSectionForTone] = useState<string | null>(null);
   const [selectedTone, setSelectedTone] = useState<ToneType | null>(null);
   const [isChangingTone, setIsChangingTone] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Refs for autosave
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedContentRef = useRef<string>('');
   
-  // Parse the generated JD on initial load
+  // Load draft data if draftId is provided
   useEffect(() => {
-    if (generatedJD) {
+    if (draftId) {
+      loadDraft(draftId);
+    } else if (generatedJD) {
+      // Parse the generated JD if provided
       parseGeneratedJD(generatedJD);
     } else {
-      // Initialize with empty sections if no JD is provided
+      // Initialize with empty sections if no data is provided
       initializeEmptySections();
+      setLoading(false);
     }
-  }, [generatedJD]);
+  }, [draftId, generatedJD]);
+
+  // Load draft data from Supabase
+  const loadDraft = async (id: string) => {
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase
+        .from('job_drafts')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      
+      if (data) {
+        setJobTitle(data.title || '');
+        
+        if (data.sections && Array.isArray(data.sections)) {
+          // Convert sections from database format to component format
+          const formattedSections = data.sections.map((section: any) => ({
+            id: section.id,
+            title: section.title,
+            content: section.content,
+            isLocked: section.locked || false,
+            isEditing: false,
+            versions: section.version_history ? 
+              section.version_history.map((vh: any) => ({
+                timestamp: new Date(vh.timestamp),
+                content: vh.content
+              })) : 
+              [{ timestamp: new Date(), content: section.content }]
+          }));
+          
+          setSections(formattedSections);
+        }
+      }
+    } catch (err) {
+      console.error('Error loading draft:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load job draft');
+      toast.error('Failed to load job draft');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Initialize empty sections structure
   const initializeEmptySections = () => {
@@ -123,137 +172,63 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         title: 'Job Title',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Briefcase,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'overview',
         title: 'Overview Panel',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: '' }]
-      },
-      {
-        id: 'sdgs',
-        title: 'SDGs (AI-Detected)',
-        content: '',
-        isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Target,
-        versions: [{ timestamp: new Date(), content: '' }]
-      },
-      {
-        id: 'sectors',
-        title: 'Sectors and Impact Areas',
-        content: '',
-        isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Sparkles,
-        versions: [{ timestamp: new Date(), content: '' }]
-      },
-      {
-        id: 'dei-language',
-        title: 'DEI and Language Analysis',
-        content: '',
-        isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Languages,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'job-summary',
         title: 'Job Summary',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'responsibilities',
         title: 'Key Responsibilities',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: CheckCircle,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'qualifications',
         title: 'Qualifications and Competencies',
-        content: `## Required Qualifications
-- 
-
-## Preferred Qualifications
-- 
-
-## Skills and Competencies
-### Technical Skills
-- 
-
-### Managerial Skills
-- 
-
-### Communication Skills
-- 
-
-### Soft Skills
-- `,
+        content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: CheckCircle,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'experience',
         title: 'Experience and Languages',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Clock,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'contract',
         title: 'Contract Details',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'how-to-apply',
         title: 'How to Apply',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       },
       {
         id: 'organization',
         title: 'About the Organization',
         content: '',
         isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: Building,
-        versions: [{ timestamp: new Date(), content: '' }]
+        isEditing: false
       }
     ];
     
@@ -262,195 +237,236 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
 
   // Parse the generated JD into sections
   const parseGeneratedJD = (jdContent: string) => {
-    // Extract job title (usually the first heading)
-    const titleMatch = jdContent.match(/^#\s+(.+)$/m);
-    const extractedTitle = titleMatch ? titleMatch[1].trim() : 'Untitled Job';
-    setJobTitle(extractedTitle);
-    
-    // Initialize sections with default structure
-    const parsedSections: JDSection[] = [
-      {
+    try {
+      // Try to parse as JSON first (in case it's already in JSON format)
+      const parsedJD = JSON.parse(jdContent);
+      
+      // Extract job title from overview
+      const extractedTitle = parsedJD.overview?.job_title || 'Untitled Job';
+      setJobTitle(extractedTitle);
+      
+      // Initialize sections array
+      const parsedSections: JDSection[] = [];
+      
+      // Add job title section
+      parsedSections.push({
         id: 'job-title',
         title: 'Job Title',
         content: extractedTitle,
         isLocked: false,
-        isEditing: false,
-        isDraft: false,
-        icon: Briefcase,
-        versions: [{ timestamp: new Date(), content: extractedTitle }]
-      }
-    ];
-    
-    // Extract overview (usually the first paragraph after the title)
-    const overviewMatch = jdContent.match(/^#\s+.+\n\n(.+(?:\n(?!##).+)*)/m);
-    if (overviewMatch) {
-      parsedSections.push({
-        id: 'overview',
-        title: 'Overview Panel',
-        content: overviewMatch[1].trim(),
-        isLocked: false,
-        isEditing: false,
-        isDraft: false,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: overviewMatch[1].trim() }]
+        isEditing: false
       });
-    } else {
-      parsedSections.push({
-        id: 'overview',
-        title: 'Overview Panel',
-        content: '',
-        isLocked: false,
-        isEditing: false,
-        isDraft: true,
-        icon: FileText,
-        versions: [{ timestamp: new Date(), content: '' }]
-      });
-    }
-    
-    // Add SDGs section (initially empty, will be AI-detected)
-    parsedSections.push({
-      id: 'sdgs',
-      title: 'SDGs (AI-Detected)',
-      content: 'AI is analyzing the job description to detect relevant Sustainable Development Goals...',
-      isLocked: false,
-      isEditing: false,
-      isDraft: true,
-      icon: Target,
-      versions: [{ timestamp: new Date(), content: '' }]
-    });
-    
-    // Add sectors section (initially empty)
-    parsedSections.push({
-      id: 'sectors',
-      title: 'Sectors and Impact Areas',
-      content: '',
-      isLocked: false,
-      isEditing: false,
-      isDraft: true,
-      icon: Sparkles,
-      versions: [{ timestamp: new Date(), content: '' }]
-    });
-    
-    // Add DEI section (initially empty)
-    parsedSections.push({
-      id: 'dei-language',
-      title: 'DEI and Language Analysis',
-      content: 'AI is analyzing the job description for inclusive language...',
-      isLocked: false,
-      isEditing: false,
-      isDraft: true,
-      icon: Languages,
-      versions: [{ timestamp: new Date(), content: '' }]
-    });
-    
-    // Extract other sections based on headings
-    const sectionMatches = jdContent.matchAll(/^##\s+(.+)\n\n([\s\S]+?)(?=\n##\s+|$)/gm);
-    
-    for (const match of sectionMatches) {
-      const sectionTitle = match[1].trim();
-      const sectionContent = match[2].trim();
       
-      // Map section titles to our predefined structure
-      let sectionId = '';
-      let icon = FileText;
-      
-      if (/job\s+summary|role\s+overview|position\s+summary/i.test(sectionTitle)) {
-        sectionId = 'job-summary';
-        icon = FileText;
-      } else if (/responsibilities|duties|key\s+functions/i.test(sectionTitle)) {
-        sectionId = 'responsibilities';
-        icon = CheckCircle;
-      } else if (/qualifications|requirements|competencies/i.test(sectionTitle)) {
-        sectionId = 'qualifications';
-        icon = CheckCircle;
-      } else if (/experience|education|languages/i.test(sectionTitle)) {
-        sectionId = 'experience';
-        icon = Clock;
-      } else if (/contract|salary|compensation|benefits|details/i.test(sectionTitle)) {
-        sectionId = 'contract';
-        icon = FileText;
-      } else if (/how\s+to\s+apply|application\s+process/i.test(sectionTitle)) {
-        sectionId = 'how-to-apply';
-        icon = FileText;
-      } else if (/about|organization|company|who\s+we\s+are/i.test(sectionTitle)) {
-        sectionId = 'organization';
-        icon = Building;
-      } else {
-        // For unrecognized sections, create a custom ID
-        sectionId = `section-${parsedSections.length}`;
-      }
-      
-      // Check if this section ID already exists (avoid duplicates)
-      const existingIndex = parsedSections.findIndex(s => s.id === sectionId);
-      
-      if (existingIndex >= 0) {
-        // Update existing section
-        parsedSections[existingIndex].content = sectionContent;
-        parsedSections[existingIndex].versions.push({ 
-          timestamp: new Date(), 
-          content: sectionContent 
-        });
-        parsedSections[existingIndex].isDraft = false;
-      } else {
-        // Add new section
+      // Add job summary section
+      if (parsedJD.sections?.job_summary) {
         parsedSections.push({
-          id: sectionId,
-          title: sectionTitle,
-          content: sectionContent,
+          id: 'job-summary',
+          title: 'Job Summary',
+          content: parsedJD.sections.job_summary,
           isLocked: false,
-          isEditing: false,
-          isDraft: false,
-          icon,
-          versions: [{ timestamp: new Date(), content: sectionContent }]
+          isEditing: false
         });
       }
-    }
-    
-    // Ensure all required sections exist
-    const requiredSections = [
-      { id: 'job-summary', title: 'Job Summary', icon: FileText },
-      { id: 'responsibilities', title: 'Key Responsibilities', icon: CheckCircle },
-      { id: 'qualifications', title: 'Qualifications and Competencies', icon: CheckCircle, 
-        defaultContent: `## Required Qualifications
-- 
-
-## Preferred Qualifications
-- 
-
-## Skills and Competencies
-### Technical Skills
-- 
-
-### Managerial Skills
-- 
-
-### Communication Skills
-- 
-
-### Soft Skills
-- ` },
-      { id: 'experience', title: 'Experience and Languages', icon: Clock },
-      { id: 'contract', title: 'Contract Details', icon: FileText },
-      { id: 'how-to-apply', title: 'How to Apply', icon: FileText },
-      { id: 'organization', title: 'About the Organization', icon: Building }
-    ];
-    
-    for (const section of requiredSections) {
-      if (!parsedSections.some(s => s.id === section.id)) {
+      
+      // Add responsibilities section
+      if (parsedJD.sections?.key_responsibilities) {
         parsedSections.push({
-          id: section.id,
-          title: section.title,
-          content: section.defaultContent || '',
+          id: 'responsibilities',
+          title: 'Key Responsibilities',
+          content: parsedJD.sections.key_responsibilities,
           isLocked: false,
-          isEditing: false,
-          isDraft: true,
-          icon: section.icon,
-          versions: [{ timestamp: new Date(), content: section.defaultContent || '' }]
+          isEditing: false
         });
       }
+      
+      // Add qualifications sections
+      if (parsedJD.sections?.required_qualifications || parsedJD.sections?.preferred_qualifications) {
+        let qualificationsContent = '';
+        
+        if (parsedJD.sections.required_qualifications) {
+          qualificationsContent += `## Required Qualifications\n${parsedJD.sections.required_qualifications}\n\n`;
+        }
+        
+        if (parsedJD.sections.preferred_qualifications) {
+          qualificationsContent += `## Preferred Qualifications\n${parsedJD.sections.preferred_qualifications}\n\n`;
+        }
+        
+        if (parsedJD.sections.skills_competencies) {
+          const skills = parsedJD.sections.skills_competencies;
+          qualificationsContent += `## Skills and Competencies\n`;
+          
+          if (skills.technical && skills.technical.length > 0) {
+            qualificationsContent += `### Technical Skills\n`;
+            skills.technical.forEach((skill: string) => {
+              qualificationsContent += `- ${skill}\n`;
+            });
+            qualificationsContent += `\n`;
+          }
+          
+          if (skills.managerial && skills.managerial.length > 0) {
+            qualificationsContent += `### Managerial Skills\n`;
+            skills.managerial.forEach((skill: string) => {
+              qualificationsContent += `- ${skill}\n`;
+            });
+            qualificationsContent += `\n`;
+          }
+          
+          if (skills.communication && skills.communication.length > 0) {
+            qualificationsContent += `### Communication Skills\n`;
+            skills.communication.forEach((skill: string) => {
+              qualificationsContent += `- ${skill}\n`;
+            });
+            qualificationsContent += `\n`;
+          }
+          
+          if (skills.soft_skills && skills.soft_skills.length > 0) {
+            qualificationsContent += `### Soft Skills\n`;
+            skills.soft_skills.forEach((skill: string) => {
+              qualificationsContent += `- ${skill}\n`;
+            });
+            qualificationsContent += `\n`;
+          }
+        }
+        
+        parsedSections.push({
+          id: 'qualifications',
+          title: 'Qualifications and Competencies',
+          content: qualificationsContent.trim(),
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Add experience section
+      if (parsedJD.sections?.experience_language) {
+        parsedSections.push({
+          id: 'experience',
+          title: 'Experience and Languages',
+          content: parsedJD.sections.experience_language,
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Add contract details section
+      if (parsedJD.sections?.contract_details) {
+        parsedSections.push({
+          id: 'contract',
+          title: 'Contract Details',
+          content: parsedJD.sections.contract_details,
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Add how to apply section
+      if (parsedJD.sections?.how_to_apply) {
+        parsedSections.push({
+          id: 'how-to-apply',
+          title: 'How to Apply',
+          content: parsedJD.sections.how_to_apply,
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Add organization section
+      if (parsedJD.sections?.about_organization) {
+        parsedSections.push({
+          id: 'organization',
+          title: 'About the Organization',
+          content: parsedJD.sections.about_organization,
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Set the sections
+      setSections(parsedSections);
+    } catch (error) {
+      // If JSON parsing fails, try to parse as markdown/text
+      console.error('Error parsing JD as JSON, falling back to text parsing:', error);
+      
+      // Extract job title (usually the first heading)
+      const titleMatch = jdContent.match(/^#\s+(.+)$/m);
+      const extractedTitle = titleMatch ? titleMatch[1].trim() : 'Untitled Job';
+      setJobTitle(extractedTitle);
+      
+      // Initialize sections with default structure
+      const parsedSections: JDSection[] = [
+        {
+          id: 'job-title',
+          title: 'Job Title',
+          content: extractedTitle,
+          isLocked: false,
+          isEditing: false
+        }
+      ];
+      
+      // Extract overview (usually the first paragraph after the title)
+      const overviewMatch = jdContent.match(/^#\s+.+\n\n(.+(?:\n(?!##).+)*)/m);
+      if (overviewMatch) {
+        parsedSections.push({
+          id: 'overview',
+          title: 'Overview Panel',
+          content: overviewMatch[1].trim(),
+          isLocked: false,
+          isEditing: false
+        });
+      }
+      
+      // Extract other sections based on headings
+      const sectionMatches = jdContent.matchAll(/^##\s+(.+)\n\n([\s\S]+?)(?=\n##\s+|$)/gm);
+      
+      for (const match of sectionMatches) {
+        const sectionTitle = match[1].trim();
+        const sectionContent = match[2].trim();
+        
+        // Map section titles to our predefined structure
+        let sectionId = '';
+        
+        if (/job\s+summary|role\s+overview|position\s+summary/i.test(sectionTitle)) {
+          sectionId = 'job-summary';
+        } else if (/responsibilities|duties|key\s+functions/i.test(sectionTitle)) {
+          sectionId = 'responsibilities';
+        } else if (/qualifications|requirements|competencies/i.test(sectionTitle)) {
+          sectionId = 'qualifications';
+        } else if (/experience|education|languages/i.test(sectionTitle)) {
+          sectionId = 'experience';
+        } else if (/contract|salary|compensation|benefits|details/i.test(sectionTitle)) {
+          sectionId = 'contract';
+        } else if (/how\s+to\s+apply|application\s+process/i.test(sectionTitle)) {
+          sectionId = 'how-to-apply';
+        } else if (/about|organization|company|who\s+we\s+are/i.test(sectionTitle)) {
+          sectionId = 'organization';
+        } else {
+          // For unrecognized sections, create a custom ID
+          sectionId = `section-${parsedSections.length}`;
+        }
+        
+        // Check if this section ID already exists (avoid duplicates)
+        const existingIndex = parsedSections.findIndex(s => s.id === sectionId);
+        
+        if (existingIndex >= 0) {
+          // Update existing section
+          parsedSections[existingIndex].content = sectionContent;
+        } else {
+          // Add new section
+          parsedSections.push({
+            id: sectionId,
+            title: sectionTitle,
+            content: sectionContent,
+            isLocked: false,
+            isEditing: false
+          });
+        }
+      }
+      
+      // Set the sections
+      setSections(parsedSections);
     }
     
-    setSections(parsedSections);
+    setLoading(false);
   };
 
   // Handle section content change
@@ -461,10 +477,10 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           ? { 
               ...section, 
               content: newContent,
-              versions: [
+              versions: section.versions ? [
                 ...section.versions,
                 { timestamp: new Date(), content: newContent }
-              ]
+              ] : [{ timestamp: new Date(), content: newContent }]
             } 
           : section
       )
@@ -563,14 +579,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             ? { 
                 ...section, 
                 content: refinedContent,
-                versions: [
+                versions: section.versions ? [
                   ...section.versions,
                   { 
                     timestamp: new Date(), 
                     content: refinedContent 
                   }
-                ],
-                isDraft: false
+                ] : [{ timestamp: new Date(), content: refinedContent }]
               } 
             : section
         )
@@ -597,14 +612,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           ? { 
               ...section, 
               content: newContent,
-              versions: [
+              versions: section.versions ? [
                 ...section.versions,
                 { 
                   timestamp: new Date(), 
                   content: newContent 
                 }
-              ],
-              isDraft: false
+              ] : [{ timestamp: new Date(), content: newContent }]
             } 
           : section
       )
@@ -651,14 +665,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
               ? { 
                   ...section, 
                   content: updatedContent,
-                  versions: [
+                  versions: section.versions ? [
                     ...section.versions,
                     { 
                       timestamp: new Date(), 
                       content: updatedContent 
                     }
-                  ],
-                  isDraft: false
+                  ] : [{ timestamp: new Date(), content: updatedContent }]
                 } 
               : section
           )
@@ -677,14 +690,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             updatedSections[i] = {
               ...updatedSections[i],
               content: updatedContent,
-              versions: [
+              versions: updatedSections[i].versions ? [
                 ...updatedSections[i].versions,
                 { 
                   timestamp: new Date(), 
                   content: updatedContent 
                 }
-              ],
-              isDraft: false
+              ] : [{ timestamp: new Date(), content: updatedContent }]
             };
           }
         }
@@ -713,7 +725,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
     
     const sectionToUpdate = sections.find(s => s.id === currentSectionForHistory);
     
-    if (!sectionToUpdate || index >= sectionToUpdate.versions.length) {
+    if (!sectionToUpdate || !sectionToUpdate.versions || index >= sectionToUpdate.versions.length) {
       return;
     }
     
@@ -725,13 +737,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           ? { 
               ...section, 
               content: versionToRestore.content,
-              versions: [
+              versions: section.versions ? [
                 ...section.versions,
                 { 
                   timestamp: new Date(), 
                   content: versionToRestore.content 
                 }
-              ]
+              ] : [{ timestamp: new Date(), content: versionToRestore.content }]
             } 
           : section
       )
@@ -793,7 +805,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         id: section.id,
         title: section.title,
         content: section.content,
-        isDraft: section.isDraft
+        isDraft: false
       }));
   };
 
@@ -828,6 +840,39 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
         return '';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#FBE4D5' }}>
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#D5765B' }} />
+          </div>
+          <p className="text-lg font-medium" style={{ color: '#3A3936' }}>Loading job description...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center bg-red-100">
+            <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
+          <p className="text-lg font-medium mb-2" style={{ color: '#3A3936' }}>Error Loading Job Description</p>
+          <p className="text-sm" style={{ color: '#66615C' }}>{error}</p>
+          <Button 
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
@@ -950,21 +995,11 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
                             </div>
                             
                             <div className="flex items-center space-x-2">
-                              <section.icon className="w-4 h-4" style={{ color: '#D5765B' }} />
+                              <FileText className="w-4 h-4" style={{ color: '#D5765B' }} />
                               <CardTitle className="text-base font-medium" style={{ color: '#3A3936' }}>
                                 {section.title}
                               </CardTitle>
                             </div>
-                            
-                            {section.isDraft && (
-                              <Badge 
-                                variant="outline" 
-                                className="text-xs px-2 py-0 h-5"
-                                style={{ borderColor: '#F59E0B', color: '#F59E0B' }}
-                              >
-                                Not Final
-                              </Badge>
-                            )}
                           </div>
                           
                           <div className="flex items-center space-x-1">
@@ -1235,7 +1270,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
             </p>
             
             <ScrollArea className="h-[300px] border rounded-md p-2" style={{ borderColor: '#D8D5D2' }}>
-              {currentSectionForHistory && sections.find(s => s.id === currentSectionForHistory)?.versions.map((version, index, array) => (
+              {currentSectionForHistory && sections.find(s => s.id === currentSectionForHistory)?.versions?.map((version, index, array) => (
                 <div 
                   key={index}
                   className="mb-4 pb-4 border-b last:border-0"
@@ -1290,28 +1325,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile }: PostJo
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* AI Suggestions Modal */}
-      {currentSectionForSuggestions && (
-        <JDSuggestions
-          isOpen={isSuggestionsOpen}
-          onClose={() => setIsSuggestionsOpen(false)}
-          sectionTitle={sections.find(s => s.id === currentSectionForSuggestions)?.title || ''}
-          sectionContent={sections.find(s => s.id === currentSectionForSuggestions)?.content || ''}
-          onApplySuggestion={handleApplySuggestion}
-          isLoading={isSuggestionsLoading}
-        />
-      )}
-
-      {/* Preview Modal */}
-      <JDPreviewModal
-        isOpen={isPreviewOpen}
-        onClose={() => setIsPreviewOpen(false)}
-        jobTitle={jobTitle}
-        sections={getPreviewSections()}
-        onDownload={handleDownload}
-        onPrint={handlePrint}
-      />
     </div>
   );
 }
