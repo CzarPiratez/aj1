@@ -92,16 +92,9 @@ interface Section {
   isEditing: boolean;
 }
 
-interface SkillGroup {
-  id: string;
-  title: string;
-  skills: string[];
-}
-
 export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescriptionEditorProps) {
   const [jobDraft, setJobDraft] = useState<JobDraft | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
-  const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -130,26 +123,16 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
       if (data) {
         setJobDraft(data);
         
-        // Parse sections
+        // Parse sections including the new paragraph-style sections
         if (data.sections && typeof data.sections === 'object') {
           const sectionData = Object.entries(data.sections).map(([key, value]: [string, any]) => ({
             id: key,
             title: value.title || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            content: value.content || '',
+            content: value.content || generateDefaultContent(key),
             isLocked: value.locked || false,
             isEditing: false
           }));
           setSections(sectionData);
-        }
-        
-        // Parse skills from metadata
-        if (data.metadata?.skills) {
-          const skillGroupData = Object.entries(data.metadata.skills).map(([key, value]: [string, any]) => ({
-            id: key,
-            title: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            skills: Array.isArray(value) ? value : []
-          }));
-          setSkillGroups(skillGroupData);
         }
       }
     } catch (error) {
@@ -157,6 +140,29 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
       toast.error('Failed to load job description');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Generate default content for sections that should be paragraph-style
+  const generateDefaultContent = (sectionId: string): string => {
+    switch (sectionId) {
+      case 'skills_competencies':
+        return 'The candidate should demonstrate strong technical proficiency in M&E frameworks, project reporting, and Excel-based budgeting. Essential skills include data analysis, stakeholder engagement, and cross-cultural communication. Experience with humanitarian coordination mechanisms and knowledge of international development standards are highly valued. The role requires excellent written and verbal communication skills, with the ability to present complex information to diverse audiences.';
+      
+      case 'experience_language':
+        return 'A minimum of 5 years of experience in the humanitarian sector, with prior exposure to post-conflict regions in East Africa. Experience in program management, community engagement, and working with international NGOs is essential. Fluency in English and French is required, with working knowledge of Swahili considered an advantage. Previous experience in similar roles within the UN system or major international organizations is preferred.';
+      
+      case 'contract_details':
+        return 'The position is full-time, initially for 12 months, with the possibility of extension based on performance and funding availability. The candidate will report to the Regional Director and is expected to start by July 2025. The role offers competitive compensation commensurate with experience, comprehensive health insurance, and professional development opportunities. Remote work arrangements may be considered for exceptional candidates.';
+      
+      case 'how_to_apply':
+        return 'Interested applicants should submit their application by 15 July 2025 through our online portal. Please include a detailed CV, cover letter addressing the key requirements, and contact information for three professional references. Only shortlisted candidates will be contacted for interviews. For technical questions about the application process, contact hr@organization.org.';
+      
+      case 'about_organization':
+        return 'Our organization works across Asia and Sub-Saharan Africa on climate resilience, livelihoods, and food security. With over 20 years of experience, we partner with local communities, governments, and international stakeholders to create sustainable solutions for development challenges. Our mission is to empower vulnerable populations through innovative programs that address root causes of poverty and inequality while building long-term resilience.';
+      
+      default:
+        return '';
     }
   };
 
@@ -175,20 +181,10 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
         return acc;
       }, {} as any);
       
-      // Prepare skills data
-      const skillsData = skillGroups.reduce((acc, group) => {
-        acc[group.id] = group.skills;
-        return acc;
-      }, {} as any);
-      
       const { error } = await supabase
         .from('job_drafts')
         .update({
           sections: sectionsData,
-          metadata: {
-            ...jobDraft.metadata,
-            skills: skillsData
-          },
           section_order: sections.map(s => s.id),
           last_edited_at: new Date().toISOString()
         })
@@ -651,31 +647,6 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                 ))}
               </Reorder.Group>
             </div>
-
-            {/* Skills & Competencies */}
-            <Card className="border shadow-sm" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-medium mb-4" style={{ color: '#3A3936' }}>
-                  Skills & Competencies
-                </h3>
-                <div className="space-y-4">
-                  {skillGroups.map((group) => (
-                    <SkillGroupBlock
-                      key={group.id}
-                      group={group}
-                      onSkillsChange={(skills) => {
-                        setSkillGroups(prev => 
-                          prev.map(g => 
-                            g.id === group.id ? { ...g, skills } : g
-                          )
-                        );
-                        handleAutoSave();
-                      }}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </ScrollArea>
 
@@ -951,7 +922,7 @@ function SectionBlock({ section, onContentChange, onToggleLock, onToggleEdit }: 
         ) : (
           <div className="prose prose-sm max-w-none">
             {section.content.split('\n').map((line, i) => (
-              <p key={i} className="text-sm leading-relaxed" style={{ color: '#3A3936' }}>
+              <p key={i} className="text-sm leading-relaxed mb-2" style={{ color: '#3A3936' }}>
                 {line}
               </p>
             ))}
@@ -959,65 +930,5 @@ function SectionBlock({ section, onContentChange, onToggleLock, onToggleEdit }: 
         )}
       </CardContent>
     </Card>
-  );
-}
-
-interface SkillGroupBlockProps {
-  group: SkillGroup;
-  onSkillsChange: (skills: string[]) => void;
-}
-
-function SkillGroupBlock({ group, onSkillsChange }: SkillGroupBlockProps) {
-  const [newSkill, setNewSkill] = useState('');
-
-  const addSkill = () => {
-    if (newSkill.trim() && !group.skills.includes(newSkill.trim())) {
-      onSkillsChange([...group.skills, newSkill.trim()]);
-      setNewSkill('');
-    }
-  };
-
-  const removeSkill = (skill: string) => {
-    onSkillsChange(group.skills.filter(s => s !== skill));
-  };
-
-  return (
-    <div>
-      <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>
-        {group.title}
-      </h4>
-      <div className="space-y-2">
-        {group.skills.map((skill, index) => (
-          <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-            <span className="text-sm" style={{ color: '#3A3936' }}>• {skill}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => removeSkill(skill)}
-              className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        ))}
-        <div className="flex items-center space-x-2">
-          <Input
-            value={newSkill}
-            onChange={(e) => setNewSkill(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addSkill()}
-            placeholder="Add new skill..."
-            className="h-8 text-sm"
-          />
-          <Button
-            onClick={addSkill}
-            size="sm"
-            className="h-8 px-3 text-white"
-            style={{ backgroundColor: '#D5765B' }}
-          >
-            <Plus className="w-3 h-3" />
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
