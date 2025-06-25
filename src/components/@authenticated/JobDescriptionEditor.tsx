@@ -92,16 +92,9 @@ interface Section {
   isEditing: boolean;
 }
 
-interface SkillGroup {
-  id: string;
-  title: string;
-  skills: string[];
-}
-
 export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescriptionEditorProps) {
   const [jobDraft, setJobDraft] = useState<JobDraft | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
-  const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -130,26 +123,19 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
       if (data) {
         setJobDraft(data);
         
-        // Parse sections
+        // Parse sections with enhanced default content
         if (data.sections && typeof data.sections === 'object') {
           const sectionData = Object.entries(data.sections).map(([key, value]: [string, any]) => ({
             id: key,
-            title: value.title || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            content: value.content || '',
+            title: value.title || getSectionTitle(key),
+            content: value.content || getDefaultSectionContent(key),
             isLocked: value.locked || false,
             isEditing: false
           }));
           setSections(sectionData);
-        }
-        
-        // Parse skills from metadata
-        if (data.metadata?.skills) {
-          const skillGroupData = Object.entries(data.metadata.skills).map(([key, value]: [string, any]) => ({
-            id: key,
-            title: key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-            skills: Array.isArray(value) ? value : []
-          }));
-          setSkillGroups(skillGroupData);
+        } else {
+          // Initialize with default sections if none exist
+          setSections(getDefaultSections());
         }
       }
     } catch (error) {
@@ -158,6 +144,55 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
     } finally {
       setLoading(false);
     }
+  };
+
+  const getSectionTitle = (key: string): string => {
+    const titleMap: { [key: string]: string } = {
+      job_summary: 'Job Summary',
+      responsibilities: 'Key Responsibilities',
+      qualifications: 'Qualifications',
+      skills_competencies: 'Skills & Competencies',
+      experience_language: 'Experience & Language',
+      contract_details: 'Contract Details',
+      how_to_apply: 'How to Apply',
+      about_organization: 'About the Organization'
+    };
+    return titleMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getDefaultSectionContent = (key: string): string => {
+    const contentMap: { [key: string]: string } = {
+      job_summary: 'We are seeking a dynamic Program Manager to lead our climate action initiatives across East Africa. This role involves coordinating with local communities, government partners, and international stakeholders to implement sustainable climate solutions.',
+      responsibilities: '• Develop and implement climate adaptation programs\n• Coordinate with local communities and stakeholders\n• Monitor and evaluate program effectiveness\n• Prepare reports for donors and partners\n• Lead capacity building workshops',
+      qualifications: '• Master\'s degree in Environmental Science, Development Studies, or related field\n• 3-5 years of experience in program management\n• Strong understanding of climate change issues\n• Excellent communication and leadership skills\n• Fluency in English and Swahili preferred',
+      skills_competencies: 'The candidate should demonstrate strong technical proficiency in M&E frameworks, project reporting, and Excel-based budgeting. Experience with participatory research methods, stakeholder engagement, and cross-cultural communication is essential. Strong analytical skills and the ability to work independently in challenging environments are required.',
+      experience_language: 'A minimum of 5 years of experience in the humanitarian sector, with prior exposure to post-conflict regions in East Africa. Fluency in English and French is essential, with working knowledge of local languages preferred. Previous experience managing multi-cultural teams and working with government partners is highly valued.',
+      contract_details: 'The position is full-time, initially for 12 months, with the possibility of extension. The candidate will report to the Regional Director and is expected to start by July 2025. The role offers competitive compensation commensurate with experience, comprehensive health benefits, and professional development opportunities.',
+      how_to_apply: 'Interested applicants should apply by 15 July 2025 using the provided application portal. Please submit a detailed CV, cover letter, and three professional references. For questions about this position, contact hr@globalclimate.org. Only shortlisted candidates will be contacted.',
+      about_organization: 'Global Climate Initiative works across Asia and Sub-Saharan Africa on climate resilience, livelihoods, and food security. Founded in 2010, we have implemented over 200 projects reaching 2 million beneficiaries. Our mission is to build sustainable communities that can adapt to and mitigate climate change while promoting economic development and social equity.'
+    };
+    return contentMap[key] || '';
+  };
+
+  const getDefaultSections = (): Section[] => {
+    const defaultSectionOrder = [
+      'job_summary',
+      'responsibilities', 
+      'qualifications',
+      'skills_competencies',
+      'experience_language',
+      'contract_details',
+      'how_to_apply',
+      'about_organization'
+    ];
+
+    return defaultSectionOrder.map(key => ({
+      id: key,
+      title: getSectionTitle(key),
+      content: getDefaultSectionContent(key),
+      isLocked: false,
+      isEditing: false
+    }));
   };
 
   const handleSave = async () => {
@@ -175,20 +210,10 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
         return acc;
       }, {} as any);
       
-      // Prepare skills data
-      const skillsData = skillGroups.reduce((acc, group) => {
-        acc[group.id] = group.skills;
-        return acc;
-      }, {} as any);
-      
       const { error } = await supabase
         .from('job_drafts')
         .update({
           sections: sectionsData,
-          metadata: {
-            ...jobDraft.metadata,
-            skills: skillsData
-          },
           section_order: sections.map(s => s.id),
           last_edited_at: new Date().toISOString()
         })
@@ -486,7 +511,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                 className="text-3xl font-bold"
                 style={{ color: '#3A3936' }}
               >
-                {jobDraft.title || 'Untitled Job'}
+                {jobDraft.title || 'Program Manager - Climate Action'}
               </h1>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -494,7 +519,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                     className="text-lg cursor-help"
                     style={{ color: '#66615C' }}
                   >
-                    {jobDraft.organization_name || 'Organization Name'}
+                    {jobDraft.organization_name || 'Global Climate Initiative'}
                   </p>
                 </TooltipTrigger>
                 <TooltipContent>Organization that is hiring</TooltipContent>
@@ -511,28 +536,28 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                   <OverviewField
                     icon={MapPin}
                     label="Location"
-                    value={jobDraft.location || 'Not specified'}
+                    value={jobDraft.location || 'Remote / Nairobi, Kenya'}
                     onEdit={(value) => console.log('Edit location:', value)}
                     hint="Click to edit location"
                   />
                   <OverviewField
                     icon={Briefcase}
                     label="Contract Type"
-                    value={jobDraft.contract_type || 'Not specified'}
+                    value={jobDraft.contract_type || 'Full-time'}
                     onEdit={(value) => console.log('Edit contract type:', value)}
                     hint="Click to edit contract type"
                   />
                   <OverviewField
                     icon={Calendar}
                     label="Application Deadline"
-                    value={jobDraft.application_end_date || 'Not specified'}
+                    value={jobDraft.application_end_date || '15 July 2025'}
                     onEdit={(value) => console.log('Edit deadline:', value)}
                     hint="Click to edit deadline"
                   />
                   <OverviewField
                     icon={DollarSign}
                     label="Salary Range"
-                    value={jobDraft.salary_range || 'Not specified'}
+                    value={jobDraft.salary_range || '$45,000 - $65,000'}
                     onEdit={(value) => console.log('Edit salary:', value)}
                     hint="AI-suggested salary range"
                   />
@@ -550,7 +575,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                   <MetadataTagGroup
                     title="SDGs"
                     icon={Target}
-                    tags={jobDraft.metadata?.sdgs || []}
+                    tags={jobDraft.metadata?.sdgs || ['Climate Action', 'Sustainable Communities']}
                     onAdd={(tag) => addMetadataTag('sdgs', tag)}
                     onRemove={(tag) => removeMetadataTag('sdgs', tag)}
                     suggestions={['No Poverty', 'Quality Education', 'Gender Equality', 'Climate Action']}
@@ -558,7 +583,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                   <MetadataTagGroup
                     title="Sectors"
                     icon={Building}
-                    tags={jobDraft.metadata?.sectors || []}
+                    tags={jobDraft.metadata?.sectors || ['Environment', 'Development']}
                     onAdd={(tag) => addMetadataTag('sectors', tag)}
                     onRemove={(tag) => removeMetadataTag('sectors', tag)}
                     suggestions={['Health', 'Education', 'Environment', 'Human Rights']}
@@ -566,7 +591,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                   <MetadataTagGroup
                     title="Impact Areas"
                     icon={Heart}
-                    tags={jobDraft.metadata?.impact_areas || []}
+                    tags={jobDraft.metadata?.impact_areas || ['Community Development']}
                     onAdd={(tag) => addMetadataTag('impact_areas', tag)}
                     onRemove={(tag) => removeMetadataTag('impact_areas', tag)}
                     suggestions={['Community Development', 'Capacity Building', 'Advocacy']}
@@ -599,27 +624,27 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                   />
                 </div>
                 
-                {jobDraft.metadata?.ai_suggestions && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium" style={{ color: '#3A3936' }}>
-                      AI Suggestions
-                    </h4>
-                    {jobDraft.metadata.ai_suggestions.map((suggestion: any, index: number) => (
-                      <div key={index} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#F9F7F4' }}>
-                        <p className="text-sm" style={{ color: '#3A3936' }}>
-                          {suggestion.text}
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs"
-                        >
-                          Apply with AI
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium" style={{ color: '#3A3936' }}>
+                    AI Suggestions
+                  </h4>
+                  {(jobDraft.metadata?.ai_suggestions || [
+                    { text: 'Consider changing "dynamic" to "collaborative" for more inclusive language' }
+                  ]).map((suggestion: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: '#F9F7F4' }}>
+                      <p className="text-sm" style={{ color: '#3A3936' }}>
+                        {suggestion.text}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                      >
+                        Apply with AI
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
 
@@ -651,31 +676,6 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                 ))}
               </Reorder.Group>
             </div>
-
-            {/* Skills & Competencies */}
-            <Card className="border shadow-sm" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-medium mb-4" style={{ color: '#3A3936' }}>
-                  Skills & Competencies
-                </h3>
-                <div className="space-y-4">
-                  {skillGroups.map((group) => (
-                    <SkillGroupBlock
-                      key={group.id}
-                      group={group}
-                      onSkillsChange={(skills) => {
-                        setSkillGroups(prev => 
-                          prev.map(g => 
-                            g.id === group.id ? { ...g, skills } : g
-                          )
-                        );
-                        handleAutoSave();
-                      }}
-                    />
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </ScrollArea>
 
@@ -951,7 +951,7 @@ function SectionBlock({ section, onContentChange, onToggleLock, onToggleEdit }: 
         ) : (
           <div className="prose prose-sm max-w-none">
             {section.content.split('\n').map((line, i) => (
-              <p key={i} className="text-sm leading-relaxed" style={{ color: '#3A3936' }}>
+              <p key={i} className="text-sm leading-relaxed mb-2" style={{ color: '#3A3936' }}>
                 {line}
               </p>
             ))}
@@ -959,65 +959,5 @@ function SectionBlock({ section, onContentChange, onToggleLock, onToggleEdit }: 
         )}
       </CardContent>
     </Card>
-  );
-}
-
-interface SkillGroupBlockProps {
-  group: SkillGroup;
-  onSkillsChange: (skills: string[]) => void;
-}
-
-function SkillGroupBlock({ group, onSkillsChange }: SkillGroupBlockProps) {
-  const [newSkill, setNewSkill] = useState('');
-
-  const addSkill = () => {
-    if (newSkill.trim() && !group.skills.includes(newSkill.trim())) {
-      onSkillsChange([...group.skills, newSkill.trim()]);
-      setNewSkill('');
-    }
-  };
-
-  const removeSkill = (skill: string) => {
-    onSkillsChange(group.skills.filter(s => s !== skill));
-  };
-
-  return (
-    <div>
-      <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>
-        {group.title}
-      </h4>
-      <div className="space-y-2">
-        {group.skills.map((skill, index) => (
-          <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-            <span className="text-sm" style={{ color: '#3A3936' }}>• {skill}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => removeSkill(skill)}
-              className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        ))}
-        <div className="flex items-center space-x-2">
-          <Input
-            value={newSkill}
-            onChange={(e) => setNewSkill(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addSkill()}
-            placeholder="Add new skill..."
-            className="h-8 text-sm"
-          />
-          <Button
-            onClick={addSkill}
-            size="sm"
-            className="h-8 px-3 text-white"
-            style={{ backgroundColor: '#D5765B' }}
-          >
-            <Plus className="w-3 h-3" />
-          </Button>
-        </div>
-      </div>
-    </div>
   );
 }
