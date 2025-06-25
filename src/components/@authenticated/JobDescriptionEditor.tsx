@@ -33,11 +33,7 @@ import {
   ExternalLink,
   MessageSquare,
   Linkedin,
-  Mail,
-  User,
-  Languages,
-  FileText,
-  Clock3
+  Mail
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -102,60 +98,10 @@ interface SkillGroup {
   skills: string[];
 }
 
-interface ExperienceData {
-  total_years: string;
-  regional_experience: string;
-  sectoral_experience: string;
-  language_fluency: string[];
-}
-
-interface ContractData {
-  duration: string;
-  working_arrangements: string;
-  start_date: string;
-  reporting_line: string;
-}
-
-interface HowToApplyData {
-  deadline: string;
-  application_method: string;
-  contact_person: string;
-}
-
-interface OrganizationData {
-  mission: string;
-  sectors: string[];
-  regions: string[];
-  website_url: string;
-}
-
 export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescriptionEditorProps) {
   const [jobDraft, setJobDraft] = useState<JobDraft | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
-  const [experienceData, setExperienceData] = useState<ExperienceData>({
-    total_years: '',
-    regional_experience: '',
-    sectoral_experience: '',
-    language_fluency: []
-  });
-  const [contractData, setContractData] = useState<ContractData>({
-    duration: '',
-    working_arrangements: '',
-    start_date: '',
-    reporting_line: ''
-  });
-  const [howToApplyData, setHowToApplyData] = useState<HowToApplyData>({
-    deadline: '',
-    application_method: '',
-    contact_person: ''
-  });
-  const [organizationData, setOrganizationData] = useState<OrganizationData>({
-    mission: '',
-    sectors: [],
-    regions: [],
-    website_url: ''
-  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -204,36 +150,6 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
             skills: Array.isArray(value) ? value : []
           }));
           setSkillGroups(skillGroupData);
-        } else {
-          // Initialize default skill groups
-          setSkillGroups([
-            { id: 'technical_skills', title: 'Technical Skills', skills: [] },
-            { id: 'managerial_skills', title: 'Managerial Skills', skills: [] },
-            { id: 'behavioral_skills', title: 'Behavioral Skills', skills: [] },
-            { id: 'soft_skills', title: 'Soft Skills', skills: [] },
-            { id: 'communication_skills', title: 'Communication Skills', skills: [] },
-            { id: 'other_skills', title: 'Other Skills', skills: [] }
-          ]);
-        }
-
-        // Parse experience data
-        if (data.metadata?.experience) {
-          setExperienceData(data.metadata.experience);
-        }
-
-        // Parse contract data
-        if (data.metadata?.contract_details) {
-          setContractData(data.metadata.contract_details);
-        }
-
-        // Parse how to apply data
-        if (data.metadata?.how_to_apply) {
-          setHowToApplyData(data.metadata.how_to_apply);
-        }
-
-        // Parse organization data
-        if (data.metadata?.organization) {
-          setOrganizationData(data.metadata.organization);
         }
       }
     } catch (error) {
@@ -271,11 +187,7 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
           sections: sectionsData,
           metadata: {
             ...jobDraft.metadata,
-            skills: skillsData,
-            experience: experienceData,
-            contract_details: contractData,
-            how_to_apply: howToApplyData,
-            organization: organizationData
+            skills: skillsData
           },
           section_order: sections.map(s => s.id),
           last_edited_at: new Date().toISOString()
@@ -415,11 +327,6 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
     
     setJobDraft(prev => prev ? { ...prev, metadata: updatedMetadata } : null);
     handleAutoSave();
-  };
-
-  const generateOrganizationWithAI = async () => {
-    toast.info('Generating organization information with AI...');
-    // Implementation for AI generation
   };
 
   if (loading) {
@@ -748,14 +655,9 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
             {/* Skills & Competencies */}
             <Card className="border shadow-sm" style={{ borderColor: '#D8D5D2' }}>
               <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium" style={{ color: '#3A3936' }}>
-                    Skills & Competencies
-                  </h3>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SectionToolbar />
-                  </div>
-                </div>
+                <h3 className="text-lg font-medium mb-4" style={{ color: '#3A3936' }}>
+                  Skills & Competencies
+                </h3>
                 <div className="space-y-4">
                   {skillGroups.map((group) => (
                     <SkillGroupBlock
@@ -772,91 +674,6 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
                     />
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Experience & Language */}
-            <Card className="border shadow-sm group" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium" style={{ color: '#3A3936' }}>
-                    Experience & Language
-                  </h3>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SectionToolbar />
-                  </div>
-                </div>
-                <ExperienceLanguageBlock
-                  data={experienceData}
-                  onChange={(data) => {
-                    setExperienceData(data);
-                    handleAutoSave();
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Contract Details */}
-            <Card className="border shadow-sm group" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium" style={{ color: '#3A3936' }}>
-                    Contract Details
-                  </h3>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SectionToolbar />
-                  </div>
-                </div>
-                <ContractDetailsBlock
-                  data={contractData}
-                  onChange={(data) => {
-                    setContractData(data);
-                    handleAutoSave();
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* How to Apply */}
-            <Card className="border shadow-sm group" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium" style={{ color: '#3A3936' }}>
-                    How to Apply
-                  </h3>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SectionToolbar />
-                  </div>
-                </div>
-                <HowToApplyBlock
-                  data={howToApplyData}
-                  onChange={(data) => {
-                    setHowToApplyData(data);
-                    handleAutoSave();
-                  }}
-                />
-              </CardContent>
-            </Card>
-
-            {/* About the Organization */}
-            <Card className="border shadow-sm group" style={{ borderColor: '#D8D5D2' }}>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium" style={{ color: '#3A3936' }}>
-                    About the Organization
-                  </h3>
-                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <SectionToolbar />
-                  </div>
-                </div>
-                <OrganizationBlock
-                  data={organizationData}
-                  onChange={(data) => {
-                    setOrganizationData(data);
-                    handleAutoSave();
-                  }}
-                  onGenerateWithAI={generateOrganizationWithAI}
-                />
               </CardContent>
             </Card>
           </div>
@@ -1014,57 +831,6 @@ function ScoreCard({ title, score, color }: ScoreCardProps) {
   );
 }
 
-function SectionToolbar() {
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <Lock className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Lock/Unlock</TooltipContent>
-      </Tooltip>
-      
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <Wand2 className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>AI Rewrite</TooltipContent>
-      </Tooltip>
-      
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <MessageSquare className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Change Tone</TooltipContent>
-      </Tooltip>
-      
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <Clock className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Version History</TooltipContent>
-      </Tooltip>
-      
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <Lightbulb className="w-3.5 h-3.5" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Suggestions</TooltipContent>
-      </Tooltip>
-    </>
-  );
-}
-
 interface SectionBlockProps {
   section: Section;
   onContentChange: (content: string) => void;
@@ -1122,7 +888,7 @@ function SectionBlock({ section, onContentChange, onToggleLock, onToggleEdit }: 
                 <Button
                   variant="ghost"
                   size="sm"
-                  disable={section.isLocked}
+                  disabled={section.isLocked}
                   className="h-7 w-7 p-0"
                 >
                   <MessageSquare className="w-3.5 h-3.5" />
@@ -1203,7 +969,6 @@ interface SkillGroupBlockProps {
 
 function SkillGroupBlock({ group, onSkillsChange }: SkillGroupBlockProps) {
   const [newSkill, setNewSkill] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
 
   const addSkill = () => {
     if (newSkill.trim() && !group.skills.includes(newSkill.trim())) {
@@ -1222,801 +987,37 @@ function SkillGroupBlock({ group, onSkillsChange }: SkillGroupBlockProps) {
         {group.title}
       </h4>
       <div className="space-y-2">
-        {group.skills.length > 0 ? (
-          group.skills.map((skill, index) => (
-            <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-              <span className="text-sm" style={{ color: '#3A3936' }}>• {skill}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => removeSkill(skill)}
-                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            </div>
-          ))
-        ) : (
-          <div 
-            className="p-3 rounded-lg border border-dashed text-center cursor-pointer hover:bg-gray-50"
-            style={{ borderColor: '#D8D5D2', color: '#66615C' }}
-            onClick={() => setIsEditing(true)}
-          >
-            <p className="text-sm">Add skills to this group</p>
-          </div>
-        )}
-        {isEditing || group.skills.length > 0 ? (
-          <div className="flex items-center space-x-2">
-            <Input
-              value={newSkill}
-              onChange={(e) => setNewSkill(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addSkill()}
-              placeholder="Add new skill..."
-              className="h-8 text-sm"
-            />
+        {group.skills.map((skill, index) => (
+          <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
+            <span className="text-sm" style={{ color: '#3A3936' }}>• {skill}</span>
             <Button
-              onClick={addSkill}
+              variant="ghost"
               size="sm"
-              className="h-8 px-3 text-white"
-              style={{ backgroundColor: '#D5765B' }}
+              onClick={() => removeSkill(skill)}
+              className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
             >
-              <Plus className="w-3 h-3" />
+              <X className="w-3 h-3" />
             </Button>
           </div>
-        ) : null}
+        ))}
+        <div className="flex items-center space-x-2">
+          <Input
+            value={newSkill}
+            onChange={(e) => setNewSkill(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && addSkill()}
+            placeholder="Add new skill..."
+            className="h-8 text-sm"
+          />
+          <Button
+            onClick={addSkill}
+            size="sm"
+            className="h-8 px-3 text-white"
+            style={{ backgroundColor: '#D5765B' }}
+          >
+            <Plus className="w-3 h-3" />
+          </Button>
+        </div>
       </div>
-    </div>
-  );
-}
-
-interface ExperienceLanguageBlockProps {
-  data: ExperienceData;
-  onChange: (data: ExperienceData) => void;
-}
-
-function ExperienceLanguageBlock({ data, onChange }: ExperienceLanguageBlockProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(data);
-  const [newLanguage, setNewLanguage] = useState('');
-
-  const handleSave = () => {
-    onChange(editData);
-    setIsEditing(false);
-  };
-
-  const addLanguage = () => {
-    if (newLanguage.trim() && !editData.language_fluency.includes(newLanguage.trim())) {
-      setEditData({
-        ...editData,
-        language_fluency: [...editData.language_fluency, newLanguage.trim()]
-      });
-      setNewLanguage('');
-    }
-  };
-
-  const removeLanguage = (language: string) => {
-    setEditData({
-      ...editData,
-      language_fluency: editData.language_fluency.filter(l => l !== language)
-    });
-  };
-
-  return (
-    <div>
-      {isEditing ? (
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Total Years of Experience
-            </label>
-            <Input
-              value={editData.total_years}
-              onChange={(e) => setEditData({ ...editData, total_years: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., 3-5 years"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Regional Experience
-            </label>
-            <Input
-              value={editData.regional_experience}
-              onChange={(e) => setEditData({ ...editData, regional_experience: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., East Africa, Southeast Asia"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Sectoral Experience
-            </label>
-            <Input
-              value={editData.sectoral_experience}
-              onChange={(e) => setEditData({ ...editData, sectoral_experience: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., Health, Education"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Language Fluency
-            </label>
-            <div className="space-y-2">
-              {editData.language_fluency.map((language, index) => (
-                <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-                  <span className="text-sm" style={{ color: '#3A3936' }}>{language}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeLanguage(language)}
-                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center space-x-2">
-                <Input
-                  value={newLanguage}
-                  onChange={(e) => setNewLanguage(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addLanguage()}
-                  placeholder="Add language (e.g., English - Fluent)"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  onClick={addLanguage}
-                  size="sm"
-                  className="h-8 px-3 text-white"
-                  style={{ backgroundColor: '#D5765B' }}
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(false)}
-              className="h-8 text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              size="sm"
-              className="h-8 text-xs text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-start space-x-3">
-              <User className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Total Experience</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.total_years || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Globe className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Regional Experience</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.regional_experience || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Briefcase className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Sectoral Experience</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.sectoral_experience || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Languages className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Language Fluency</p>
-                <div>
-                  {data.language_fluency && data.language_fluency.length > 0 ? (
-                    data.language_fluency.map((language, index) => (
-                      <p key={index} className="text-sm" style={{ color: '#3A3936' }}>
-                        • {language}
-                      </p>
-                    ))
-                  ) : (
-                    <p className="text-sm" style={{ color: '#3A3936' }}>Not specified</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditing(true)}
-            className="h-8 text-xs"
-          >
-            <Edit3 className="w-3 h-3 mr-2" />
-            Edit Experience & Language
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface ContractDetailsBlockProps {
-  data: ContractData;
-  onChange: (data: ContractData) => void;
-}
-
-function ContractDetailsBlock({ data, onChange }: ContractDetailsBlockProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(data);
-
-  const handleSave = () => {
-    onChange(editData);
-    setIsEditing(false);
-  };
-
-  return (
-    <div>
-      {isEditing ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-                Duration
-              </label>
-              <Input
-                value={editData.duration}
-                onChange={(e) => setEditData({ ...editData, duration: e.target.value })}
-                className="h-8 text-sm"
-                placeholder="e.g., 12 months"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-                Working Arrangements
-              </label>
-              <Input
-                value={editData.working_arrangements}
-                onChange={(e) => setEditData({ ...editData, working_arrangements: e.target.value })}
-                className="h-8 text-sm"
-                placeholder="e.g., Remote, Hybrid, In-person"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-                Start Date
-              </label>
-              <Input
-                value={editData.start_date}
-                onChange={(e) => setEditData({ ...editData, start_date: e.target.value })}
-                className="h-8 text-sm"
-                placeholder="e.g., January 2026"
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-                Reporting Line
-              </label>
-              <Input
-                value={editData.reporting_line}
-                onChange={(e) => setEditData({ ...editData, reporting_line: e.target.value })}
-                className="h-8 text-sm"
-                placeholder="e.g., Reports to Country Director"
-              />
-            </div>
-          </div>
-          
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(false)}
-              className="h-8 text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              size="sm"
-              className="h-8 text-xs text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-start space-x-3">
-              <Clock3 className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Duration</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.duration || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Building className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Working Arrangements</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.working_arrangements || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Calendar className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Start Date</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.start_date || 'Not specified'}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start space-x-3">
-              <Users className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Reporting Line</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.reporting_line || 'Not specified'}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditing(true)}
-            className="h-8 text-xs"
-          >
-            <Edit3 className="w-3 h-3 mr-2" />
-            Edit Contract Details
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface HowToApplyBlockProps {
-  data: HowToApplyData;
-  onChange: (data: HowToApplyData) => void;
-}
-
-function HowToApplyBlock({ data, onChange }: HowToApplyBlockProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(data);
-
-  const handleSave = () => {
-    onChange(editData);
-    setIsEditing(false);
-  };
-
-  return (
-    <div>
-      {isEditing ? (
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Application Deadline
-            </label>
-            <Input
-              value={editData.deadline}
-              onChange={(e) => setEditData({ ...editData, deadline: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., January 31, 2026"
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Application Method
-            </label>
-            <Textarea
-              value={editData.application_method}
-              onChange={(e) => setEditData({ ...editData, application_method: e.target.value })}
-              className="min-h-[80px] text-sm"
-              placeholder="e.g., Please submit your CV and cover letter to..."
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Contact Person (Optional)
-            </label>
-            <Input
-              value={editData.contact_person}
-              onChange={(e) => setEditData({ ...editData, contact_person: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., Jane Smith, Recruitment Manager"
-            />
-          </div>
-          
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(false)}
-              className="h-8 text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              size="sm"
-              className="h-8 text-xs text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-start space-x-3">
-            <Calendar className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-            <div>
-              <p className="text-xs font-medium" style={{ color: '#66615C' }}>Application Deadline</p>
-              <p className="text-sm" style={{ color: '#3A3936' }}>
-                {data.deadline || 'Not specified'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-start space-x-3">
-            <FileText className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-            <div>
-              <p className="text-xs font-medium" style={{ color: '#66615C' }}>Application Method</p>
-              <p className="text-sm" style={{ color: '#3A3936' }}>
-                {data.application_method || 'Not specified'}
-              </p>
-            </div>
-          </div>
-          
-          {data.contact_person && (
-            <div className="flex items-start space-x-3">
-              <User className="w-4 h-4 mt-0.5" style={{ color: '#D5765B' }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: '#66615C' }}>Contact Person</p>
-                <p className="text-sm" style={{ color: '#3A3936' }}>
-                  {data.contact_person}
-                </p>
-              </div>
-            </div>
-          )}
-          
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsEditing(true)}
-            className="h-8 text-xs"
-          >
-            <Edit3 className="w-3 h-3 mr-2" />
-            Edit Application Instructions
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface OrganizationBlockProps {
-  data: OrganizationData;
-  onChange: (data: OrganizationData) => void;
-  onGenerateWithAI: () => void;
-}
-
-function OrganizationBlock({ data, onChange, onGenerateWithAI }: OrganizationBlockProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState(data);
-  const [newSector, setNewSector] = useState('');
-  const [newRegion, setNewRegion] = useState('');
-
-  const handleSave = () => {
-    onChange(editData);
-    setIsEditing(false);
-  };
-
-  const addSector = () => {
-    if (newSector.trim() && !editData.sectors.includes(newSector.trim())) {
-      setEditData({
-        ...editData,
-        sectors: [...editData.sectors, newSector.trim()]
-      });
-      setNewSector('');
-    }
-  };
-
-  const removeSector = (sector: string) => {
-    setEditData({
-      ...editData,
-      sectors: editData.sectors.filter(s => s !== sector)
-    });
-  };
-
-  const addRegion = () => {
-    if (newRegion.trim() && !editData.regions.includes(newRegion.trim())) {
-      setEditData({
-        ...editData,
-        regions: [...editData.regions, newRegion.trim()]
-      });
-      setNewRegion('');
-    }
-  };
-
-  const removeRegion = (region: string) => {
-    setEditData({
-      ...editData,
-      regions: editData.regions.filter(r => r !== region)
-    });
-  };
-
-  const hasMissionContent = data.mission && data.mission.trim().length > 0;
-  const hasSectors = data.sectors && data.sectors.length > 0;
-  const hasRegions = data.regions && data.regions.length > 0;
-  const hasWebsite = data.website_url && data.website_url.trim().length > 0;
-  const hasAnyContent = hasMissionContent || hasSectors || hasRegions || hasWebsite;
-
-  return (
-    <div>
-      {isEditing ? (
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Organization Mission
-            </label>
-            <Textarea
-              value={editData.mission}
-              onChange={(e) => setEditData({ ...editData, mission: e.target.value })}
-              className="min-h-[100px] text-sm"
-              placeholder="Describe the organization's mission and purpose..."
-            />
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Sectors
-            </label>
-            <div className="space-y-2">
-              {editData.sectors.map((sector, index) => (
-                <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-                  <span className="text-sm" style={{ color: '#3A3936' }}>{sector}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeSector(sector)}
-                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center space-x-2">
-                <Input
-                  value={newSector}
-                  onChange={(e) => setNewSector(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addSector()}
-                  placeholder="Add sector (e.g., Health, Education)"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  onClick={addSector}
-                  size="sm"
-                  className="h-8 px-3 text-white"
-                  style={{ backgroundColor: '#D5765B' }}
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Regions of Operation
-            </label>
-            <div className="space-y-2">
-              {editData.regions.map((region, index) => (
-                <div key={index} className="flex items-center justify-between p-2 rounded border" style={{ borderColor: '#D8D5D2' }}>
-                  <span className="text-sm" style={{ color: '#3A3936' }}>{region}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeRegion(region)}
-                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex items-center space-x-2">
-                <Input
-                  value={newRegion}
-                  onChange={(e) => setNewRegion(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addRegion()}
-                  placeholder="Add region (e.g., East Africa, Southeast Asia)"
-                  className="h-8 text-sm"
-                />
-                <Button
-                  onClick={addRegion}
-                  size="sm"
-                  className="h-8 px-3 text-white"
-                  style={{ backgroundColor: '#D5765B' }}
-                >
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          
-          <div>
-            <label className="text-sm font-medium block mb-1" style={{ color: '#3A3936' }}>
-              Organization Website
-            </label>
-            <Input
-              value={editData.website_url}
-              onChange={(e) => setEditData({ ...editData, website_url: e.target.value })}
-              className="h-8 text-sm"
-              placeholder="e.g., https://organization.org"
-            />
-          </div>
-          
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(false)}
-              className="h-8 text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSave}
-              size="sm"
-              className="h-8 text-xs text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      ) : hasAnyContent ? (
-        <div className="space-y-4">
-          {hasMissionContent && (
-            <div>
-              <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>Mission</h4>
-              <p className="text-sm" style={{ color: '#3A3936' }}>{data.mission}</p>
-            </div>
-          )}
-          
-          {hasSectors && (
-            <div>
-              <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>Sectors</h4>
-              <div className="flex flex-wrap gap-2">
-                {data.sectors.map((sector, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {sector}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {hasRegions && (
-            <div>
-              <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>Regions of Operation</h4>
-              <div className="flex flex-wrap gap-2">
-                {data.regions.map((region, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
-                    {region}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {hasWebsite && (
-            <div>
-              <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>Website</h4>
-              <a 
-                href={data.website_url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-sm flex items-center hover:underline"
-                style={{ color: '#D5765B' }}
-              >
-                {data.website_url}
-                <ExternalLink className="w-3 h-3 ml-1" />
-              </a>
-            </div>
-          )}
-          
-          <div className="flex space-x-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-              className="h-8 text-xs"
-            >
-              <Edit3 className="w-3 h-3 mr-2" />
-              Edit Organization Info
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onGenerateWithAI}
-              className="h-8 text-xs"
-            >
-              <Wand2 className="w-3 h-3 mr-2" />
-              Enhance with AI
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="text-center p-6 border border-dashed rounded-lg" style={{ borderColor: '#D8D5D2' }}>
-          <Building className="w-8 h-8 mx-auto mb-3" style={{ color: '#D5765B', opacity: 0.5 }} />
-          <h4 className="text-sm font-medium mb-2" style={{ color: '#3A3936' }}>
-            Organization Information Missing
-          </h4>
-          <p className="text-sm mb-4" style={{ color: '#66615C' }}>
-            Add information about the organization to help candidates understand your mission and impact.
-          </p>
-          <div className="flex flex-col space-y-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onGenerateWithAI}
-              className="h-8 text-xs"
-            >
-              <Wand2 className="w-3 h-3 mr-2" />
-              Generate with AI
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-              className="h-8 text-xs"
-            >
-              <Edit3 className="w-3 h-3 mr-2" />
-              Add Manually
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
