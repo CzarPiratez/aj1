@@ -64,32 +64,38 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Utility function to strip markdown formatting from text
-  const stripMarkdown = (text: string): string => {
+  // Utility function to convert markdown to HTML while preserving list markers
+  const convertMarkdownToHtml = (text: string): string => {
     return text
-      // Remove bold formatting (**text** or __text__)
-      .replace(/\*\*(.*?)\*\*/g, '$1')
-      .replace(/__(.*?)__/g, '$1')
-      // Remove italic formatting (*text* or _text_)
-      .replace(/\*(.*?)\*/g, '$1')
-      .replace(/_(.*?)_/g, '$1')
-      // Remove headers (# ## ### etc.)
-      .replace(/^#{1,6}\s+/gm, '')
-      // Remove strikethrough (~~text~~)
-      .replace(/~~(.*?)~~/g, '$1')
-      // Remove blockquotes (> text)
-      .replace(/^>\s+/gm, '')
-      // Remove code blocks (```code```)
-      .replace(/```[\s\S]*?```/g, '')
-      // Remove inline code (`code`)
-      .replace(/`([^`]+)`/g, '$1')
-      // Remove horizontal rules (--- or ***)
-      .replace(/^[-*]{3,}$/gm, '')
-      // Remove list markers (- or * or 1.)
-      .replace(/^[\s]*[-*+]\s+/gm, '')
-      .replace(/^[\s]*\d+\.\s+/gm, '')
-      // Clean up extra whitespace
-      .replace(/\n{3,}/g, '\n\n')
+      // Convert bold formatting (**text** or __text__) to <strong>
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.*?)__/g, '<strong>$1</strong>')
+      // Convert italic formatting (*text* or _text_) to <em>
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/_(.*?)_/g, '<em>$1</em>')
+      // Convert headers (# ## ### etc.) to appropriate heading tags
+      .replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
+      .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
+      .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
+      .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+      .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+      .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>')
+      // Convert strikethrough (~~text~~) to <del>
+      .replace(/~~(.*?)~~/g, '<del>$1</del>')
+      // Convert blockquotes (> text) to <blockquote>
+      .replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>')
+      // Convert inline code (`code`) to <code>
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      // Convert code blocks (```code```) to <pre><code>
+      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+      // Convert horizontal rules (--- or ***) to <hr>
+      .replace(/^[-*]{3,}$/gm, '<hr>')
+      // Preserve list markers but don't convert to HTML lists (keep as plain text)
+      // This preserves: "1. item", "a. item", "- item", "* item"
+      // Convert line breaks to <br> tags
+      .replace(/\n/g, '<br>')
+      // Clean up extra whitespace but preserve intentional spacing
+      .replace(/<br><br><br>/g, '<br><br>')
       .trim();
   };
 
@@ -179,12 +185,12 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
         systemPrompt
       );
       
-      // Strip markdown formatting from AI response
-      const cleanedResponse = stripMarkdown(aiResponse);
+      // Convert markdown to HTML for proper rendering
+      const formattedResponse = convertMarkdownToHtml(aiResponse);
       
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: cleanedResponse,
+        content: formattedResponse,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -437,12 +443,12 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
             systemPrompt
           );
           
-          // Strip markdown formatting from AI response
-          const cleanedResponse = stripMarkdown(aiResponse);
+          // Convert markdown to HTML for proper rendering
+          const formattedResponse = convertMarkdownToHtml(aiResponse);
           
           const responseMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: cleanedResponse,
+            content: formattedResponse,
             sender: 'assistant',
             timestamp: new Date(),
           };
@@ -541,7 +547,13 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                                           message.type === 'progress' ? '#10B981' : 'transparent'
                         }}
                       >
-                        <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                        <div 
+                          className="text-sm"
+                          dangerouslySetInnerHTML={{ __html: message.content }}
+                          style={{
+                            lineHeight: '1.6'
+                          }}
+                        />
                       </motion.div>
                       
                       <p 
