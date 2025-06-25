@@ -32,6 +32,7 @@ interface Message {
   metadata?: {
     websiteContent?: any;
     jobId?: string;
+    draftId?: string;
   };
 }
 
@@ -354,13 +355,6 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
       // Set input but don't auto-send
       setInput(message);
       
-      // Show a coming soon message instead of the old editor
-      onContentChange({
-        type: 'coming-soon',
-        title: 'Job Description Editor',
-        content: 'The new AI-powered job description editor is coming soon! It will feature modular sections, hover-based AI tools, and intelligent content generation.'
-      });
-      
       // Auto-submit if requested (for AI-controlled tools)
       if (autoSubmit) {
         // First, add the user message
@@ -419,6 +413,97 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
           };
           
           setMessages(prev => [...prev, responseMessage]);
+
+          // Simulate JD generation and show editor
+          setTimeout(async () => {
+            // Create a mock job draft
+            try {
+              const { data: draftData, error } = await supabase
+                .from('job_drafts')
+                .insert({
+                  user_id: profile?.id,
+                  title: 'Program Manager - Climate Action',
+                  organization_name: 'Global Climate Initiative',
+                  location: 'Remote / Nairobi, Kenya',
+                  contract_type: 'full-time',
+                  salary_range: '$45,000 - $65,000',
+                  sections: {
+                    job_summary: {
+                      title: 'Job Summary',
+                      content: 'We are seeking a dynamic Program Manager to lead our climate action initiatives across East Africa. This role involves coordinating with local communities, government partners, and international stakeholders to implement sustainable climate solutions.'
+                    },
+                    responsibilities: {
+                      title: 'Key Responsibilities',
+                      content: '• Develop and implement climate adaptation programs\n• Coordinate with local communities and stakeholders\n• Monitor and evaluate program effectiveness\n• Prepare reports for donors and partners\n• Lead capacity building workshops'
+                    },
+                    qualifications: {
+                      title: 'Qualifications',
+                      content: '• Master\'s degree in Environmental Science, Development Studies, or related field\n• 3-5 years of experience in program management\n• Strong understanding of climate change issues\n• Excellent communication and leadership skills\n• Fluency in English and Swahili preferred'
+                    }
+                  },
+                  section_order: ['job_summary', 'responsibilities', 'qualifications'],
+                  metadata: {
+                    sdgs: ['Climate Action', 'Sustainable Communities'],
+                    sectors: ['Environment', 'Development'],
+                    dei_score: 85,
+                    clarity_score: 92,
+                    ai_suggestions: [
+                      { text: 'Consider changing "dynamic" to "collaborative" for more inclusive language' }
+                    ]
+                  },
+                  ai_generated: true,
+                  generation_metadata: {
+                    method: 'brief',
+                    model: 'deepseek-chat-v3',
+                    timestamp: new Date().toISOString()
+                  }
+                })
+                .select()
+                .single();
+
+              if (error) throw error;
+
+              // Update progress flags
+              await updateFlag('has_generated_jd', true);
+
+              // Show the editor
+              onContentChange({
+                type: 'job-description-editor',
+                draftId: draftData.id,
+                title: 'Job Description Editor',
+                content: 'AI-powered job description editor'
+              });
+
+              // Add success message
+              const successMessage: Message = {
+                id: (Date.now() + 2).toString(),
+                content: "Great! I've generated your job description. You can now review, edit, and refine it using the editor. The AI has structured it into sections and provided suggestions for improvement.",
+                sender: 'assistant',
+                timestamp: new Date(),
+                metadata: {
+                  draftId: draftData.id
+                }
+              };
+
+              setMessages(prev => [...prev, successMessage]);
+
+            } catch (error) {
+              console.error('Error creating job draft:', error);
+              
+              const errorMessage: Message = {
+                id: (Date.now() + 2).toString(),
+                content: "I encountered an issue while generating your job description. Please try again or contact support if the problem persists.",
+                sender: 'assistant',
+                timestamp: new Date(),
+              };
+              
+              setMessages(prev => [...prev, errorMessage]);
+              
+              // Set generation failed flag
+              await updateFlag('jd_generation_failed', true);
+            }
+          }, 3000);
+          
         } catch (error) {
           console.error('Error getting AI response:', error);
           

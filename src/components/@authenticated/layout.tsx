@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ChatInterface } from '@/components/layout/ChatInterface';
 import { AuthenticatedIndex } from './index';
+import { JobDescriptionEditor } from './JobDescriptionEditor';
 import { MyJobsDashboard } from './jobs/MyJobsDashboard';
 import { supabase } from '@/lib/supabase';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -237,7 +238,13 @@ export function AuthenticatedLayout({ user }: AuthenticatedLayoutProps) {
               style={{ backgroundColor: '#FFFFFF' }}
             >
               {mainContent ? (
-                mainContent.type === 'jobs' ? (
+                mainContent.type === 'job-description-editor' ? (
+                  <JobDescriptionEditor 
+                    draftId={mainContent.draftId}
+                    profile={profile}
+                    onClose={() => setMainContent(null)}
+                  />
+                ) : mainContent.type === 'jobs' ? (
                   <MyJobsDashboard 
                     profile={profile}
                     subType={mainContent.subType}
