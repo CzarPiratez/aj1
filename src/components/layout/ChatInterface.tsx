@@ -19,7 +19,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CategorizedToolDropdowns } from '@/components/chat/CategorizedToolDropdowns';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { generateChatResponse, checkAIStatus } from '@/lib/ai';
+import { generateChatResponse, checkAIStatus, callAI } from '@/lib/ai';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 
@@ -41,66 +41,127 @@ interface ChatInterfaceProps {
   profile?: any;
 }
 
-// Mock AI function for JD generation
+// Real AI function for JD generation using the AI service
 async function generateFullJD(input: string, inputType: 'brief' | 'upload' | 'link'): Promise<any> {
-  // Simulate AI processing delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  console.log('🤖 Generating JD with input:', { inputType, inputLength: input.length });
   
-  // Return structured JD data
-  return {
-    overview: {
-      title: "Program Manager",
-      organization: "Global Health Initiative",
-      location: "Remote/Hybrid",
-      contract_type: "full-time",
-      salary_range: "$65,000 - $85,000",
-      application_deadline: "2024-02-15"
+  // Construct the AI prompt for structured JD generation
+  const systemPrompt = `You are an expert AI assistant specializing in creating comprehensive job descriptions for the nonprofit, humanitarian, and development sector. 
+
+Your task is to generate a complete, professional job description based on the user's input. You must return a valid JSON object with the following exact structure:
+
+{
+  "overview": {
+    "title": "Job Title",
+    "organization": "Organization Name",
+    "location": "Location (Remote/City/Country)",
+    "contract_type": "full-time|part-time|contract|consultant|volunteer|internship|temporary|freelance",
+    "salary_range": "Salary range or 'Competitive' or 'Commensurate with experience'",
+    "application_deadline": "YYYY-MM-DD format or 'Until filled'"
+  },
+  "sections": {
+    "job_summary": {
+      "title": "Job Summary",
+      "content": "Compelling 2-3 sentence overview of the role and its impact",
+      "locked": false
     },
-    sections: {
-      job_summary: {
-        title: "Job Summary",
-        content: "We are seeking a dynamic Program Manager to lead our global health initiatives and drive meaningful impact in underserved communities worldwide.",
-        locked: false
-      },
-      responsibilities: {
-        title: "Key Responsibilities",
-        content: "• Develop and implement program strategies\n• Manage stakeholder relationships\n• Monitor and evaluate program outcomes\n• Lead cross-functional teams\n• Ensure compliance with donor requirements",
-        locked: false
-      },
-      qualifications: {
-        title: "Qualifications",
-        content: "• Master's degree in Public Health, International Development, or related field\n• 5+ years of program management experience\n• Experience in global health or development sector\n• Strong analytical and communication skills\n• Fluency in English; additional languages preferred",
-        locked: false
-      },
-      skills_competencies: {
-        title: "Skills & Competencies",
-        content: "• Project management and strategic planning\n• Data analysis and reporting\n• Cross-cultural communication\n• Budget management\n• Monitoring and evaluation",
-        locked: false
-      },
-      how_to_apply: {
-        title: "How to Apply",
-        content: "Please submit your CV, cover letter, and three professional references through our online portal. Applications will be reviewed on a rolling basis.",
-        locked: false
-      }
+    "responsibilities": {
+      "title": "Key Responsibilities",
+      "content": "• Bullet point list of main duties and responsibilities",
+      "locked": false
     },
-    metadata: {
-      sdgs: ["Good Health and Well-being", "Quality Education", "Partnerships for the Goals"],
-      sectors: ["Health", "Education"],
-      impact_areas: ["Community Development", "Capacity Building"],
-      dei_score: 85,
-      clarity_score: 92,
-      ai_suggestions: [
-        {
-          text: "Consider adding specific language requirements for the role",
-          type: "enhancement"
-        },
-        {
-          text: "Include information about professional development opportunities",
-          type: "improvement"
-        }
-      ]
+    "qualifications": {
+      "title": "Qualifications",
+      "content": "• Required and preferred qualifications\n• Education requirements\n• Experience requirements",
+      "locked": false
+    },
+    "skills_competencies": {
+      "title": "Skills & Competencies",
+      "content": "• Technical skills\n• Soft skills\n• Language requirements",
+      "locked": false
+    },
+    "how_to_apply": {
+      "title": "How to Apply",
+      "content": "Clear instructions on application process and required documents",
+      "locked": false
     }
-  };
+  },
+  "metadata": {
+    "sdgs": ["Relevant SDG names"],
+    "sectors": ["Relevant sectors"],
+    "impact_areas": ["Impact areas"],
+    "dei_score": 85,
+    "clarity_score": 90,
+    "ai_suggestions": [
+      {
+        "text": "Suggestion text",
+        "type": "enhancement|improvement|warning"
+      }
+    ]
+  }
+}
+
+Guidelines:
+- Use inclusive, bias-free language
+- Focus on impact and mission alignment
+- Include specific, actionable responsibilities
+- Make qualifications realistic and not overly restrictive
+- Ensure content is appropriate for nonprofit/development sector
+- Use bullet points for lists
+- Keep content professional but engaging
+- Return ONLY the JSON object, no additional text`;
+
+  let userPrompt = '';
+  
+  if (inputType === 'brief') {
+    userPrompt = `Create a comprehensive job description based on this job brief:\n\n${input}`;
+  } else if (inputType === 'link') {
+    userPrompt = `Create a comprehensive job description based on this job brief and organization information:\n\n${input}`;
+  } else if (inputType === 'upload') {
+    userPrompt = `Create a comprehensive job description based on this uploaded job description file. Improve and enhance the content while maintaining the core requirements:\n\n${input}`;
+  }
+
+  try {
+    // Call the AI service
+    const response = await callAI([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], {
+      temperature: 0.7,
+      max_tokens: 3000
+    });
+
+    console.log('🤖 Raw AI response:', response.content);
+
+    // Parse the JSON response
+    let jdData;
+    try {
+      // Clean the response to extract JSON
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No JSON found in AI response');
+      }
+      
+      jdData = JSON.parse(jsonMatch[0]);
+      console.log('✅ Parsed JD data:', jdData);
+    } catch (parseError) {
+      console.error('❌ Failed to parse AI response as JSON:', parseError);
+      throw new Error('AI response was not valid JSON');
+    }
+
+    // Validate the structure
+    if (!jdData.overview || !jdData.sections || !jdData.metadata) {
+      throw new Error('AI response missing required structure');
+    }
+
+    return jdData;
+
+  } catch (error) {
+    console.error('❌ Error in generateFullJD:', error);
+    
+    // Fallback error response
+    throw new Error(`Failed to generate job description: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
@@ -171,7 +232,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     const hasUrl = urlRegex.test(userInput);
     
     // Check if it's a substantial job brief (more than 50 characters and contains job-related keywords)
-    const jobKeywords = ['position', 'role', 'job', 'responsibilities', 'qualifications', 'requirements', 'experience', 'skills', 'organization', 'company', 'team', 'manager', 'coordinator', 'officer', 'director', 'analyst', 'specialist'];
+    const jobKeywords = ['position', 'role', 'job', 'responsibilities', 'qualifications', 'requirements', 'experience', 'skills', 'organization', 'company', 'team', 'manager', 'coordinator', 'officer', 'director', 'analyst', 'specialist', 'program', 'project', 'development', 'humanitarian', 'nonprofit', 'ngo'];
     const hasJobKeywords = jobKeywords.some(keyword => input.includes(keyword));
     const isSubstantial = userInput.trim().length > 50;
     
@@ -194,11 +255,15 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setIsGeneratingJD(true);
     
     try {
+      console.log('🚀 Starting JD generation process...');
+      
       // Update progress flags
       await updateFlag('has_started_jd', true);
       
       // Generate the structured JD using AI
       const jdData = await generateFullJD(userInput, inputType);
+      
+      console.log('📝 Generated JD data:', jdData);
       
       // Store in Supabase job_drafts table
       const { data: draft, error } = await supabase
@@ -210,7 +275,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           location: jdData.overview.location,
           contract_type: jdData.overview.contract_type,
           salary_range: jdData.overview.salary_range,
-          application_end_date: jdData.overview.application_deadline,
+          application_end_date: jdData.overview.application_deadline !== 'Until filled' ? jdData.overview.application_deadline : null,
           sections: jdData.sections,
           metadata: jdData.metadata,
           section_order: Object.keys(jdData.sections),
@@ -218,8 +283,10 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
           ai_generation_method: inputType,
           generation_metadata: {
             input_type: inputType,
-            input_content: userInput,
-            generated_at: new Date().toISOString()
+            input_content: userInput.substring(0, 1000), // Store first 1000 chars for reference
+            generated_at: new Date().toISOString(),
+            ai_model: 'deepseek-chat-v3',
+            processing_time: Date.now()
           },
           draft_status: 'draft'
         })
@@ -227,8 +294,11 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
         .single();
 
       if (error) {
+        console.error('❌ Supabase error:', error);
         throw error;
       }
+
+      console.log('✅ Stored draft in Supabase:', draft);
 
       // Update progress flags
       await updateFlag('has_generated_jd', true);
@@ -254,7 +324,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       setMessages(prev => [...prev, successMessage]);
 
     } catch (error) {
-      console.error('Error generating JD:', error);
+      console.error('❌ Error generating JD:', error);
       
       // Update failure flag
       await updateFlag('jd_generation_failed', true);
@@ -262,7 +332,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Add error message to chat
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "I encountered an error while generating your job description. Please try again or contact support if the issue persists.",
+        content: `I encountered an error while generating your job description: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again or contact support if the issue persists.`,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -559,8 +629,8 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
       };
       setMessages(prev => [...prev, ackMessage]);
 
-      // Generate JD from uploaded file
-      await generateAndStoreJD(`Uploaded JD file: ${file.name}`, 'upload');
+      // Generate JD from uploaded file (using filename as placeholder for actual file content)
+      await generateAndStoreJD(`Uploaded JD file: ${file.name}\n\nPlease enhance and improve this job description while maintaining the core requirements and structure.`, 'upload');
       
       e.target.value = '';
       return;
