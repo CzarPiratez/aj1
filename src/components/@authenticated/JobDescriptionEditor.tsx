@@ -123,11 +123,24 @@ export function JobDescriptionEditor({ draftId, profile, onClose }: JobDescripti
       if (data) {
         setJobDraft(data);
         
-        // Parse sections including the new paragraph-style sections
-        if (data.sections && typeof data.sections === 'object') {
+        // Use section_order to construct sections in the correct order
+        if (data.section_order && Array.isArray(data.section_order)) {
+          const orderedSections = data.section_order.map((sectionId: string) => {
+            const sectionData = data.sections?.[sectionId];
+            return {
+              id: sectionId,
+              title: sectionData?.title || sectionId.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+              content: sectionData?.content || generateDefaultContent(sectionId),
+              isLocked: sectionData?.locked || false,
+              isEditing: false
+            };
+          });
+          setSections(orderedSections);
+        } else if (data.sections && typeof data.sections === 'object') {
+          // Fallback to old method if section_order is not available
           const sectionData = Object.entries(data.sections).map(([key, value]: [string, any]) => ({
             id: key,
-            title: value.title || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            title: value.title || key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
             content: value.content || generateDefaultContent(key),
             isLocked: value.locked || false,
             isEditing: false
