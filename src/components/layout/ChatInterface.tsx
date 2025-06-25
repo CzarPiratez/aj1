@@ -64,6 +64,35 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Utility function to strip markdown formatting from text
+  const stripMarkdown = (text: string): string => {
+    return text
+      // Remove bold formatting (**text** or __text__)
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      // Remove italic formatting (*text* or _text_)
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      // Remove headers (# ## ### etc.)
+      .replace(/^#{1,6}\s+/gm, '')
+      // Remove strikethrough (~~text~~)
+      .replace(/~~(.*?)~~/g, '$1')
+      // Remove blockquotes (> text)
+      .replace(/^>\s+/gm, '')
+      // Remove code blocks (```code```)
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove inline code (`code`)
+      .replace(/`([^`]+)`/g, '$1')
+      // Remove horizontal rules (--- or ***)
+      .replace(/^[-*]{3,}$/gm, '')
+      // Remove list markers (- or * or 1.)
+      .replace(/^[\s]*[-*+]\s+/gm, '')
+      .replace(/^[\s]*\d+\.\s+/gm, '')
+      // Clean up extra whitespace
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -150,9 +179,12 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
         systemPrompt
       );
       
+      // Strip markdown formatting from AI response
+      const cleanedResponse = stripMarkdown(aiResponse);
+      
       const responseMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: aiResponse,
+        content: cleanedResponse,
         sender: 'assistant',
         timestamp: new Date(),
       };
@@ -405,9 +437,12 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
             systemPrompt
           );
           
+          // Strip markdown formatting from AI response
+          const cleanedResponse = stripMarkdown(aiResponse);
+          
           const responseMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: aiResponse,
+            content: cleanedResponse,
             sender: 'assistant',
             timestamp: new Date(),
           };
