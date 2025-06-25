@@ -740,7 +740,7 @@ Always follow these rules:
 
 Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
           
-          // Generate AI response
+          // Generate AI response with updated message
           const aiResponse = await generateChatResponse(
             message, 
             conversationContext, 
@@ -748,8 +748,14 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
             systemPrompt
           );
           
+          // Update the message to be more action-oriented
+          const updatedResponse = aiResponse.replace(
+            "Just let me know which method works best for you!",
+            "You can go ahead and paste the brief (with or without a link), or upload a file — whichever works best for you."
+          );
+          
           // Convert markdown to HTML for proper rendering
-          const formattedResponse = convertMarkdownToHtml(aiResponse);
+          const formattedResponse = convertMarkdownToHtml(updatedResponse);
           
           const responseMessage: Message = {
             id: (Date.now() + 1).toString(),
@@ -762,10 +768,10 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
         } catch (error) {
           console.error('Error getting AI response:', error);
           
-          // Special fallback for Post a Job tool
+          // Special fallback for Post a Job tool with updated message
           const fallbackMessage: Message = {
             id: (Date.now() + 1).toString(),
-            content: "The assistant is currently offline. You can still edit your JD manually or try again shortly.",
+            content: "I'll help you create a professional job description for the nonprofit sector. How would you like to begin?<br><br>1. <strong>Paste a job brief + organization link</strong> — Share your job requirements along with your organization's website<br>2. <strong>Paste a job brief only</strong> — Share just your job requirements and I'll help structure them<br>3. <strong>Upload an old JD file</strong> — Upload an existing job description to enhance and improve<br><br>You can go ahead and paste the brief (with or without a link), or upload a file — whichever works best for you.",
             sender: 'assistant',
             timestamp: new Date(),
           };
