@@ -41,6 +41,68 @@ interface ChatInterfaceProps {
   profile?: any;
 }
 
+// Mock AI function for JD generation
+async function generateFullJD(input: string, inputType: 'brief' | 'upload' | 'link'): Promise<any> {
+  // Simulate AI processing delay
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  // Return structured JD data
+  return {
+    overview: {
+      title: "Program Manager",
+      organization: "Global Health Initiative",
+      location: "Remote/Hybrid",
+      contract_type: "full-time",
+      salary_range: "$65,000 - $85,000",
+      application_deadline: "2024-02-15"
+    },
+    sections: {
+      job_summary: {
+        title: "Job Summary",
+        content: "We are seeking a dynamic Program Manager to lead our global health initiatives and drive meaningful impact in underserved communities worldwide.",
+        locked: false
+      },
+      responsibilities: {
+        title: "Key Responsibilities",
+        content: "• Develop and implement program strategies\n• Manage stakeholder relationships\n• Monitor and evaluate program outcomes\n• Lead cross-functional teams\n• Ensure compliance with donor requirements",
+        locked: false
+      },
+      qualifications: {
+        title: "Qualifications",
+        content: "• Master's degree in Public Health, International Development, or related field\n• 5+ years of program management experience\n• Experience in global health or development sector\n• Strong analytical and communication skills\n• Fluency in English; additional languages preferred",
+        locked: false
+      },
+      skills_competencies: {
+        title: "Skills & Competencies",
+        content: "• Project management and strategic planning\n• Data analysis and reporting\n• Cross-cultural communication\n• Budget management\n• Monitoring and evaluation",
+        locked: false
+      },
+      how_to_apply: {
+        title: "How to Apply",
+        content: "Please submit your CV, cover letter, and three professional references through our online portal. Applications will be reviewed on a rolling basis.",
+        locked: false
+      }
+    },
+    metadata: {
+      sdgs: ["Good Health and Well-being", "Quality Education", "Partnerships for the Goals"],
+      sectors: ["Health", "Education"],
+      impact_areas: ["Community Development", "Capacity Building"],
+      dei_score: 85,
+      clarity_score: 92,
+      ai_suggestions: [
+        {
+          text: "Consider adding specific language requirements for the role",
+          type: "enhancement"
+        },
+        {
+          text: "Include information about professional development opportunities",
+          type: "improvement"
+        }
+      ]
+    }
+  };
+}
+
 export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) {
   const { flags, loading: progressLoading, updateFlag, updateFlags } = useUserProgress(profile?.id);
   
@@ -59,6 +121,7 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
   const [isFocused, setIsFocused] = useState(false);
   const [aiConnected, setAiConnected] = useState<boolean | null>(null);
   const [activeToolId, setActiveToolId] = useState<string | null>(null);
+  const [isGeneratingJD, setIsGeneratingJD] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -97,6 +160,118 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
       // Clean up extra whitespace but preserve intentional spacing
       .replace(/<br><br><br>/g, '<br><br>')
       .trim();
+  };
+
+  // Function to detect if input is valid for JD generation
+  const detectJDInput = (userInput: string): { isValid: boolean; type?: 'brief' | 'link' | 'upload'; hasLink?: boolean } => {
+    const input = userInput.toLowerCase().trim();
+    
+    // Check for URLs in the input
+    const urlRegex = /(https?:\/\/[^\s]+)/gi;
+    const hasUrl = urlRegex.test(userInput);
+    
+    // Check if it's a substantial job brief (more than 50 characters and contains job-related keywords)
+    const jobKeywords = ['position', 'role', 'job', 'responsibilities', 'qualifications', 'requirements', 'experience', 'skills', 'organization', 'company', 'team', 'manager', 'coordinator', 'officer', 'director', 'analyst', 'specialist'];
+    const hasJobKeywords = jobKeywords.some(keyword => input.includes(keyword));
+    const isSubstantial = userInput.trim().length > 50;
+    
+    if (hasUrl && hasJobKeywords && isSubstantial) {
+      return { isValid: true, type: 'link', hasLink: true };
+    } else if (hasJobKeywords && isSubstantial) {
+      return { isValid: true, type: 'brief', hasLink: false };
+    }
+    
+    return { isValid: false };
+  };
+
+  // Function to generate and store JD
+  const generateAndStoreJD = async (userInput: string, inputType: 'brief' | 'link' | 'upload') => {
+    if (!profile?.id) {
+      toast.error('Please sign in to generate job descriptions');
+      return;
+    }
+
+    setIsGeneratingJD(true);
+    
+    try {
+      // Update progress flags
+      await updateFlag('has_started_jd', true);
+      
+      // Generate the structured JD using AI
+      const jdData = await generateFullJD(userInput, inputType);
+      
+      // Store in Supabase job_drafts table
+      const { data: draft, error } = await supabase
+        .from('job_drafts')
+        .insert({
+          user_id: profile.id,
+          title: jdData.overview.title,
+          organization_name: jdData.overview.organization,
+          location: jdData.overview.location,
+          contract_type: jdData.overview.contract_type,
+          salary_range: jdData.overview.salary_range,
+          application_end_date: jdData.overview.application_deadline,
+          sections: jdData.sections,
+          metadata: jdData.metadata,
+          section_order: Object.keys(jdData.sections),
+          ai_generated: true,
+          ai_generation_method: inputType,
+          generation_metadata: {
+            input_type: inputType,
+            input_content: userInput,
+            generated_at: new Date().toISOString()
+          },
+          draft_status: 'draft'
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Update progress flags
+      await updateFlag('has_generated_jd', true);
+      await updateFlag('jd_generation_failed', false);
+
+      // Trigger the JD editor to open with this draft
+      onContentChange({
+        type: 'job-description-editor',
+        draftId: draft.id,
+        title: 'Job Description Editor',
+        content: 'AI-generated job description ready for editing'
+      });
+
+      // Add success message to chat
+      const successMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "Your job description is ready! You can now review, edit, and improve it using the editor on the right.",
+        sender: 'assistant',
+        timestamp: new Date(),
+        type: 'progress'
+      };
+
+      setMessages(prev => [...prev, successMessage]);
+
+    } catch (error) {
+      console.error('Error generating JD:', error);
+      
+      // Update failure flag
+      await updateFlag('jd_generation_failed', true);
+      
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "I encountered an error while generating your job description. Please try again or contact support if the issue persists.",
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+      toast.error('Failed to generate job description');
+    } finally {
+      setIsGeneratingJD(false);
+    }
   };
 
   const scrollToBottom = () => {
@@ -143,6 +318,26 @@ export function ChatInterface({ onContentChange, profile }: ChatInterfaceProps) 
     setMessages(prev => [...prev, userMessage]);
     const currentInput = input;
     setInput('');
+
+    // Check if this is a JD generation request and we're in the Post a Job tool
+    if (activeToolId === 'post-job-generate-jd') {
+      const jdDetection = detectJDInput(currentInput);
+      
+      if (jdDetection.isValid && jdDetection.type) {
+        // Add immediate acknowledgment message
+        const ackMessage: Message = {
+          id: (Date.now() + 0.5).toString(),
+          content: "Thanks! Generating your job description now...",
+          sender: 'assistant',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, ackMessage]);
+        
+        // Generate and store the JD
+        await generateAndStoreJD(currentInput, jdDetection.type);
+        return;
+      }
+    }
 
     setIsTyping(true);
 
@@ -331,6 +526,46 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check if we're in the Post a Job tool and this is a JD file
+    if (activeToolId === 'post-job-generate-jd') {
+      const allowedTypes = ['.pdf', '.docx', '.txt'];
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      
+      if (!allowedTypes.includes(fileExtension)) {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          content: `Sorry, only ${allowedTypes.join(', ')} files are supported for job description uploads.`,
+          sender: 'assistant',
+          timestamp: new Date(),
+        }]);
+        return;
+      }
+
+      // Add user message about file upload
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content: `Uploaded file: ${file.name}`,
+        sender: 'user',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // Add acknowledgment message
+      const ackMessage: Message = {
+        id: (Date.now() + 0.5).toString(),
+        content: "Thanks! Processing your uploaded job description file...",
+        sender: 'assistant',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, ackMessage]);
+
+      // Generate JD from uploaded file
+      await generateAndStoreJD(`Uploaded JD file: ${file.name}`, 'upload');
+      
+      e.target.value = '';
+      return;
+    }
+
     // Regular file upload handling (CV, etc.)
     const allowedTypes = ['.pdf', '.docx', '.txt', '.json'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
@@ -378,7 +613,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
     setIsRecording(!isRecording);
   };
 
-  const canSend = input.trim().length > 0 && !isTyping;
+  const canSend = input.trim().length > 0 && !isTyping && !isGeneratingJD;
 
   const handleToolAction = async (toolId: string, message: string, autoSubmit = false) => {
     // Set active tool ID for context-aware responses
@@ -570,7 +805,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
 
             {/* Typing Indicator */}
             <AnimatePresence>
-              {isTyping && (
+              {(isTyping || isGeneratingJD) && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -615,7 +850,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                             />
                           </div>
                           <span className="text-xs" style={{ color: '#66615C' }}>
-                            AI is thinking...
+                            {isGeneratingJD ? 'Generating job description...' : 'AI is thinking...'}
                           </span>
                         </div>
                       </div>
@@ -667,7 +902,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                   color: '#3A3936',
                   boxShadow: 'none'
                 }}
-                disabled={isTyping}
+                disabled={isTyping || isGeneratingJD}
               />
 
               <motion.div
@@ -702,7 +937,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                       onClick={handleFileUpload}
                       className="h-5 w-5 p-0 rounded-md hover:shadow-sm transition-all duration-200"
                       style={{ color: '#66615C' }}
-                      disabled={isTyping}
+                      disabled={isTyping || isGeneratingJD}
                     >
                       <Paperclip className="w-2.5 h-2.5" />
                     </Button>
@@ -718,7 +953,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                     flags={flags}
                     onToolAction={handleToolAction}
                     onInactiveToolClick={handleInactiveToolClick}
-                    disabled={isTyping}
+                    disabled={isTyping || isGeneratingJD}
                   />
                 )}
 
@@ -733,7 +968,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
                         color: isRecording ? '#D5765B' : '#66615C',
                         backgroundColor: isRecording ? '#FBE4D5' : 'transparent'
                       }}
-                      disabled={isTyping}
+                      disabled={isTyping || isGeneratingJD}
                     >
                       {isRecording ? (
                         <Square className="w-2.5 h-2.5" />
