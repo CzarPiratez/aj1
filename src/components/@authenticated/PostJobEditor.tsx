@@ -79,6 +79,21 @@ interface JDSection {
   versions?: { timestamp: Date; content: string }[];
 }
 
+interface JobDraft {
+  id: string;
+  user_id: string;
+  title?: string;
+  description?: string;
+  organization_name?: string;
+  sections?: any;
+  metadata?: any;
+  draft_status: string;
+  ai_generated: boolean;
+  generation_metadata: any;
+  created_at: string;
+  updated_at: string;
+}
+
 type ToneType = 'formal' | 'inclusive' | 'neutral' | 'locally-adapted';
 
 export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId }: PostJobEditorProps) {
@@ -101,6 +116,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
   const [isChangingTone, setIsChangingTone] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentDraft, setCurrentDraft] = useState<JobDraft | null>(null);
   
   // Refs for autosave
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -120,7 +136,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
     }
   }, [draftId, generatedJD]);
 
-  // Load draft data from Supabase
+  // Load draft data from Supabase using new schema
   const loadDraft = async (id: string) => {
     try {
       setLoading(true);
@@ -134,14 +150,15 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
       if (error) throw error;
       
       if (data) {
+        setCurrentDraft(data);
         setJobTitle(data.title || '');
         
-        if (data.sections && Array.isArray(data.sections)) {
-          // Convert sections from database format to component format
-          const formattedSections = data.sections.map((section: any) => ({
-            id: section.id,
-            title: section.title,
-            content: section.content,
+        // Load sections from the new schema
+        if (data.sections && typeof data.sections === 'object') {
+          const formattedSections = Object.entries(data.sections).map(([key, section]: [string, any]) => ({
+            id: key,
+            title: section.title || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            content: section.content || '',
             isLocked: section.locked || false,
             isEditing: false,
             versions: section.version_history ? 
@@ -149,10 +166,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
                 timestamp: new Date(vh.timestamp),
                 content: vh.content
               })) : 
-              [{ timestamp: new Date(), content: section.content }]
+              [{ timestamp: new Date(), content: section.content || '' }]
           }));
           
           setSections(formattedSections);
+        } else {
+          // Fallback to legacy parsing if sections don't exist
+          initializeEmptySections();
         }
       }
     } catch (err) {
@@ -176,7 +196,7 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
       },
       {
         id: 'overview',
-        title: 'Overview Panel',
+        title: 'Overview',
         content: '',
         isLocked: false,
         isEditing: false
@@ -235,14 +255,14 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
     setSections(defaultSections);
   };
 
-  // Parse the generated JD into sections
+  // Parse the generated JD into sections using new schema
   const parseGeneratedJD = (jdContent: string) => {
     try {
-      // Try to parse as JSON first (in case it's already in JSON format)
+      // Try to parse as JSON first (new format)
       const parsedJD = JSON.parse(jdContent);
       
-      // Extract job title from overview
-      const extractedTitle = parsedJD.overview?.job_title || 'Untitled Job';
+      // Extract job title from overview or title field
+      const extractedTitle = parsedJD.title || parsedJD.overview?.job_title || 'Untitled Job';
       setJobTitle(extractedTitle);
       
       // Initialize sections array
@@ -257,219 +277,33 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
         isEditing: false
       });
       
-      // Add job summary section
-      if (parsedJD.sections?.job_summary) {
-        parsedSections.push({
-          id: 'job-summary',
-          title: 'Job Summary',
-          content: parsedJD.sections.job_summary,
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add responsibilities section
-      if (parsedJD.sections?.key_responsibilities) {
-        parsedSections.push({
-          id: 'responsibilities',
-          title: 'Key Responsibilities',
-          content: parsedJD.sections.key_responsibilities,
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add qualifications sections
-      if (parsedJD.sections?.required_qualifications || parsedJD.sections?.preferred_qualifications) {
-        let qualificationsContent = '';
-        
-        if (parsedJD.sections.required_qualifications) {
-          qualificationsContent += `## Required Qualifications\n${parsedJD.sections.required_qualifications}\n\n`;
-        }
-        
-        if (parsedJD.sections.preferred_qualifications) {
-          qualificationsContent += `## Preferred Qualifications\n${parsedJD.sections.preferred_qualifications}\n\n`;
-        }
-        
-        if (parsedJD.sections.skills_competencies) {
-          const skills = parsedJD.sections.skills_competencies;
-          qualificationsContent += `## Skills and Competencies\n`;
-          
-          if (skills.technical && skills.technical.length > 0) {
-            qualificationsContent += `### Technical Skills\n`;
-            skills.technical.forEach((skill: string) => {
-              qualificationsContent += `- ${skill}\n`;
+      // Process sections from the new schema
+      if (parsedJD.sections && typeof parsedJD.sections === 'object') {
+        Object.entries(parsedJD.sections).forEach(([key, section]: [string, any]) => {
+          if (key !== 'job-title') {
+            parsedSections.push({
+              id: key,
+              title: section.title || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+              content: section.content || '',
+              isLocked: false,
+              isEditing: false
             });
-            qualificationsContent += `\n`;
           }
-          
-          if (skills.managerial && skills.managerial.length > 0) {
-            qualificationsContent += `### Managerial Skills\n`;
-            skills.managerial.forEach((skill: string) => {
-              qualificationsContent += `- ${skill}\n`;
-            });
-            qualificationsContent += `\n`;
-          }
-          
-          if (skills.communication && skills.communication.length > 0) {
-            qualificationsContent += `### Communication Skills\n`;
-            skills.communication.forEach((skill: string) => {
-              qualificationsContent += `- ${skill}\n`;
-            });
-            qualificationsContent += `\n`;
-          }
-          
-          if (skills.soft_skills && skills.soft_skills.length > 0) {
-            qualificationsContent += `### Soft Skills\n`;
-            skills.soft_skills.forEach((skill: string) => {
-              qualificationsContent += `- ${skill}\n`;
-            });
-            qualificationsContent += `\n`;
-          }
-        }
-        
-        parsedSections.push({
-          id: 'qualifications',
-          title: 'Qualifications and Competencies',
-          content: qualificationsContent.trim(),
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add experience section
-      if (parsedJD.sections?.experience_language) {
-        parsedSections.push({
-          id: 'experience',
-          title: 'Experience and Languages',
-          content: parsedJD.sections.experience_language,
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add contract details section
-      if (parsedJD.sections?.contract_details) {
-        parsedSections.push({
-          id: 'contract',
-          title: 'Contract Details',
-          content: parsedJD.sections.contract_details,
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add how to apply section
-      if (parsedJD.sections?.how_to_apply) {
-        parsedSections.push({
-          id: 'how-to-apply',
-          title: 'How to Apply',
-          content: parsedJD.sections.how_to_apply,
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Add organization section
-      if (parsedJD.sections?.about_organization) {
-        parsedSections.push({
-          id: 'organization',
-          title: 'About the Organization',
-          content: parsedJD.sections.about_organization,
-          isLocked: false,
-          isEditing: false
         });
       }
       
       // Set the sections
       setSections(parsedSections);
     } catch (error) {
-      // If JSON parsing fails, try to parse as markdown/text
-      console.error('Error parsing JD as JSON, falling back to text parsing:', error);
-      
-      // Extract job title (usually the first heading)
-      const titleMatch = jdContent.match(/^#\s+(.+)$/m);
-      const extractedTitle = titleMatch ? titleMatch[1].trim() : 'Untitled Job';
-      setJobTitle(extractedTitle);
-      
-      // Initialize sections with default structure
-      const parsedSections: JDSection[] = [
-        {
-          id: 'job-title',
-          title: 'Job Title',
-          content: extractedTitle,
-          isLocked: false,
-          isEditing: false
-        }
-      ];
-      
-      // Extract overview (usually the first paragraph after the title)
-      const overviewMatch = jdContent.match(/^#\s+.+\n\n(.+(?:\n(?!##).+)*)/m);
-      if (overviewMatch) {
-        parsedSections.push({
-          id: 'overview',
-          title: 'Overview Panel',
-          content: overviewMatch[1].trim(),
-          isLocked: false,
-          isEditing: false
-        });
-      }
-      
-      // Extract other sections based on headings
-      const sectionMatches = jdContent.matchAll(/^##\s+(.+)\n\n([\s\S]+?)(?=\n##\s+|$)/gm);
-      
-      for (const match of sectionMatches) {
-        const sectionTitle = match[1].trim();
-        const sectionContent = match[2].trim();
-        
-        // Map section titles to our predefined structure
-        let sectionId = '';
-        
-        if (/job\s+summary|role\s+overview|position\s+summary/i.test(sectionTitle)) {
-          sectionId = 'job-summary';
-        } else if (/responsibilities|duties|key\s+functions/i.test(sectionTitle)) {
-          sectionId = 'responsibilities';
-        } else if (/qualifications|requirements|competencies/i.test(sectionTitle)) {
-          sectionId = 'qualifications';
-        } else if (/experience|education|languages/i.test(sectionTitle)) {
-          sectionId = 'experience';
-        } else if (/contract|salary|compensation|benefits|details/i.test(sectionTitle)) {
-          sectionId = 'contract';
-        } else if (/how\s+to\s+apply|application\s+process/i.test(sectionTitle)) {
-          sectionId = 'how-to-apply';
-        } else if (/about|organization|company|who\s+we\s+are/i.test(sectionTitle)) {
-          sectionId = 'organization';
-        } else {
-          // For unrecognized sections, create a custom ID
-          sectionId = `section-${parsedSections.length}`;
-        }
-        
-        // Check if this section ID already exists (avoid duplicates)
-        const existingIndex = parsedSections.findIndex(s => s.id === sectionId);
-        
-        if (existingIndex >= 0) {
-          // Update existing section
-          parsedSections[existingIndex].content = sectionContent;
-        } else {
-          // Add new section
-          parsedSections.push({
-            id: sectionId,
-            title: sectionTitle,
-            content: sectionContent,
-            isLocked: false,
-            isEditing: false
-          });
-        }
-      }
-      
-      // Set the sections
-      setSections(parsedSections);
+      // If JSON parsing fails, initialize empty sections
+      console.error('Error parsing JD as JSON, initializing empty sections:', error);
+      initializeEmptySections();
     }
     
     setLoading(false);
   };
 
-  // Handle section content change
+  // Handle section content change with autosave
   const handleSectionChange = (id: string, newContent: string) => {
     setSections(prevSections => 
       prevSections.map(section => 
@@ -491,13 +325,52 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
       clearTimeout(autoSaveTimerRef.current);
     }
     
-    autoSaveTimerRef.current = setTimeout(() => {
-      // Here you would save to database
+    autoSaveTimerRef.current = setTimeout(async () => {
+      await saveDraftToDatabase();
+    }, 2000);
+  };
+
+  // Save draft to database using new schema
+  const saveDraftToDatabase = async () => {
+    if (!currentDraft || !profile?.id) return;
+    
+    try {
+      // Convert sections to new schema format
+      const sectionsData = sections.reduce((acc, section) => {
+        if (section.id !== 'job-title') {
+          acc[section.id] = {
+            title: section.title,
+            content: section.content,
+            locked: section.isLocked,
+            version_history: section.versions || []
+          };
+        }
+        return acc;
+      }, {} as any);
+
+      const { error } = await supabase
+        .from('job_drafts')
+        .update({
+          title: jobTitle,
+          sections: sectionsData,
+          metadata: {
+            last_auto_save: new Date().toISOString(),
+            section_count: sections.length - 1 // Exclude job-title
+          },
+          last_edited_at: new Date().toISOString()
+        })
+        .eq('id', currentDraft.id)
+        .eq('user_id', profile.id);
+
+      if (error) throw error;
+      
       toast.success('Changes saved automatically', {
         duration: 2000,
       });
-      lastSavedContentRef.current = JSON.stringify(sections);
-    }, 2000);
+    } catch (error) {
+      console.error('Error saving draft:', error);
+      toast.error('Failed to save changes');
+    }
   };
 
   // Toggle section lock state
@@ -524,33 +397,13 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
     setActiveSection(id);
   };
 
-  // Open AI refinement modal for a section
+  // AI refinement functions
   const openAIRefinementModal = (id: string) => {
     setCurrentSectionForRefinement(id);
     setAiRefinementInstructions('');
     setIsRefinementModalOpen(true);
   };
 
-  // Open AI suggestions modal for a section
-  const openAISuggestionsModal = (id: string) => {
-    setCurrentSectionForSuggestions(id);
-    setIsSuggestionsLoading(true);
-    setIsSuggestionsOpen(true);
-    
-    // Simulate AI loading time
-    setTimeout(() => {
-      setIsSuggestionsLoading(false);
-    }, 1500);
-  };
-
-  // Open tone selection modal for a section or entire JD
-  const openToneSelectionModal = (id: string | null) => {
-    setCurrentSectionForTone(id);
-    setIsToneModalOpen(true);
-    setSelectedTone(null);
-  };
-
-  // Handle AI refinement submission
   const handleAIRefinement = async () => {
     if (!currentSectionForRefinement || !aiRefinementInstructions) {
       toast.error('Please provide instructions for the AI');
@@ -601,243 +454,14 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
     }
   };
 
-  // Handle applying a suggestion to a section
-  const handleApplySuggestion = (newContent: string) => {
-    if (!currentSectionForSuggestions) return;
-    
-    // Update the section with the suggested content
-    setSections(prevSections => 
-      prevSections.map(section => 
-        section.id === currentSectionForSuggestions 
-          ? { 
-              ...section, 
-              content: newContent,
-              versions: section.versions ? [
-                ...section.versions,
-                { 
-                  timestamp: new Date(), 
-                  content: newContent 
-                }
-              ] : [{ timestamp: new Date(), content: newContent }]
-            } 
-          : section
-      )
-    );
-    
-    // Set up autosave
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
-    
-    autoSaveTimerRef.current = setTimeout(() => {
-      // Here you would save to database
-      toast.success('Changes saved automatically', {
-        duration: 2000,
-      });
-      lastSavedContentRef.current = JSON.stringify(sections);
-    }, 2000);
-  };
-
-  // Handle tone change for a section or entire JD
-  const handleToneChange = async (tone: ToneType) => {
-    setSelectedTone(tone);
-    setIsChangingTone(true);
-    
-    try {
-      if (currentSectionForTone) {
-        // Change tone for a specific section
-        const sectionToUpdate = sections.find(s => s.id === currentSectionForTone);
-        
-        if (!sectionToUpdate) {
-          throw new Error('Section not found');
-        }
-        
-        if (sectionToUpdate.isLocked) {
-          throw new Error('Section is locked');
-        }
-        
-        const updatedContent = await adjustTone(sectionToUpdate.content, tone);
-        
-        // Update the section with the new tone
-        setSections(prevSections => 
-          prevSections.map(section => 
-            section.id === currentSectionForTone 
-              ? { 
-                  ...section, 
-                  content: updatedContent,
-                  versions: section.versions ? [
-                    ...section.versions,
-                    { 
-                      timestamp: new Date(), 
-                      content: updatedContent 
-                    }
-                  ] : [{ timestamp: new Date(), content: updatedContent }]
-                } 
-              : section
-          )
-        );
-        
-        toast.success(`Section tone updated to ${tone}`);
-      } else {
-        // Change tone for the entire JD
-        const updatedSections = [...sections];
-        
-        // Process each unlocked section
-        for (let i = 0; i < updatedSections.length; i++) {
-          if (!updatedSections[i].isLocked && updatedSections[i].content.trim()) {
-            const updatedContent = await adjustTone(updatedSections[i].content, tone);
-            
-            updatedSections[i] = {
-              ...updatedSections[i],
-              content: updatedContent,
-              versions: updatedSections[i].versions ? [
-                ...updatedSections[i].versions,
-                { 
-                  timestamp: new Date(), 
-                  content: updatedContent 
-                }
-              ] : [{ timestamp: new Date(), content: updatedContent }]
-            };
-          }
-        }
-        
-        setSections(updatedSections);
-        toast.success(`All sections updated to ${tone} tone`);
-      }
-    } catch (error) {
-      console.error('Error changing tone:', error);
-      toast.error('Failed to change tone');
-    } finally {
-      setIsChangingTone(false);
-      setIsToneModalOpen(false);
-    }
-  };
-
-  // Open version history modal for a section
-  const openVersionHistoryModal = (id: string) => {
-    setCurrentSectionForHistory(id);
-    setIsVersionHistoryOpen(true);
-  };
-
-  // Restore a previous version of a section
-  const restoreVersion = (index: number) => {
-    if (!currentSectionForHistory) return;
-    
-    const sectionToUpdate = sections.find(s => s.id === currentSectionForHistory);
-    
-    if (!sectionToUpdate || !sectionToUpdate.versions || index >= sectionToUpdate.versions.length) {
-      return;
-    }
-    
-    const versionToRestore = sectionToUpdate.versions[index];
-    
-    setSections(prevSections => 
-      prevSections.map(section => 
-        section.id === currentSectionForHistory 
-          ? { 
-              ...section, 
-              content: versionToRestore.content,
-              versions: section.versions ? [
-                ...section.versions,
-                { 
-                  timestamp: new Date(), 
-                  content: versionToRestore.content 
-                }
-              ] : [{ timestamp: new Date(), content: versionToRestore.content }]
-            } 
-          : section
-      )
-    );
-    
-    toast.success('Previous version restored');
-    setIsVersionHistoryOpen(false);
-  };
-
   // Save the entire job description
   const saveJobDescription = async () => {
     try {
-      // Here you would save to database
+      await saveDraftToDatabase();
       toast.success('Job description saved successfully');
     } catch (error) {
       console.error('Error saving job description:', error);
       toast.error('Failed to save job description');
-    }
-  };
-
-  // Generate the full job description text
-  const generateFullJobDescription = (): string => {
-    let fullJD = `# ${jobTitle}\n\n`;
-    
-    // Add each section in order
-    sections.forEach(section => {
-      if (section.id !== 'job-title' && section.content.trim()) {
-        fullJD += `## ${section.title}\n\n${section.content}\n\n`;
-      }
-    });
-    
-    return fullJD;
-  };
-
-  // Handle print action
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // Handle download action
-  const handleDownload = () => {
-    // Create a blob and download
-    const blob = new Blob([generateFullJobDescription()], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${jobTitle.replace(/\s+/g, '-').toLowerCase()}-job-description.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Prepare sections for preview modal
-  const getPreviewSections = () => {
-    return sections
-      .filter(section => section.id !== 'job-title')
-      .map(section => ({
-        id: section.id,
-        title: section.title,
-        content: section.content,
-        isDraft: false
-      }));
-  };
-
-  // Get tone label for display
-  const getToneLabel = (tone: ToneType): string => {
-    switch (tone) {
-      case 'formal':
-        return 'Formal';
-      case 'inclusive':
-        return 'Inclusive';
-      case 'neutral':
-        return 'Neutral';
-      case 'locally-adapted':
-        return 'Locally Adapted';
-      default:
-        return tone;
-    }
-  };
-
-  // Get tone description for the modal
-  const getToneDescription = (tone: ToneType): string => {
-    switch (tone) {
-      case 'formal':
-        return 'Professional language with traditional corporate structure. Best for established organizations and formal sectors.';
-      case 'inclusive':
-        return 'Welcoming language that appeals to diverse candidates. Emphasizes accessibility and belonging.';
-      case 'neutral':
-        return 'Balanced, straightforward language that focuses on clarity. Suitable for most contexts.';
-      case 'locally-adapted':
-        return 'Culturally appropriate language for the specific region or community. Includes local context and terminology.';
-      default:
-        return '';
     }
   };
 
@@ -895,39 +519,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
           </div>
           
           <div className="flex items-center space-x-2">
-            {/* Tone Selector Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9"
-                  style={{ borderColor: '#D8D5D2', color: '#66615C' }}
-                >
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Tone
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => openToneSelectionModal(null)}>
-                  <Wand2 className="w-4 h-4 mr-2" style={{ color: '#D5765B' }} />
-                  <span>Change Entire JD Tone</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => {
-                    if (activeSection) {
-                      openToneSelectionModal(activeSection);
-                    } else {
-                      toast.info('Please select a section first');
-                    }
-                  }}
-                >
-                  <Edit3 className="w-4 h-4 mr-2" style={{ color: '#D5765B' }} />
-                  <span>Change Selected Section</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
             <Button
               variant="outline"
               size="sm"
@@ -1003,41 +594,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
                           </div>
                           
                           <div className="flex items-center space-x-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openVersionHistoryModal(section.id)}
-                              className="h-7 w-7 p-0 rounded-full"
-                              title="Version History"
-                              style={{ color: '#66615C' }}
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                            </Button>
-                            
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openAISuggestionsModal(section.id)}
-                              className="h-7 w-7 p-0 rounded-full"
-                              title="AI Suggestions"
-                              disabled={section.isLocked}
-                              style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
-                            >
-                              <Lightbulb className="w-3.5 h-3.5" />
-                            </Button>
-                            
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openToneSelectionModal(section.id)}
-                              className="h-7 w-7 p-0 rounded-full"
-                              title="Change Tone"
-                              disabled={section.isLocked}
-                              style={{ color: section.isLocked ? '#D8D5D2' : '#D5765B' }}
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                            </Button>
-                            
                             <Button
                               variant="ghost"
                               size="sm"
@@ -1165,162 +721,6 @@ export function PostJobEditor({ generatedJD, activeTask, step, profile, draftId 
                   Refine with AI
                 </>
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Tone Selection Modal */}
-      <Dialog open={isToneModalOpen} onOpenChange={setIsToneModalOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
-              Change Tone
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 my-2">
-            <p className="text-sm" style={{ color: '#66615C' }}>
-              Select a tone to rewrite {currentSectionForTone ? 'this section' : 'the entire job description'}.
-            </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {(['formal', 'inclusive', 'neutral', 'locally-adapted'] as ToneType[]).map((tone) => (
-                <Card 
-                  key={tone}
-                  className={`border cursor-pointer transition-all duration-200 ${selectedTone === tone ? 'border-2' : ''}`}
-                  style={{ 
-                    borderColor: selectedTone === tone ? '#D5765B' : '#D8D5D2',
-                    backgroundColor: selectedTone === tone ? '#FBE4D5' : '#FFFFFF'
-                  }}
-                  onClick={() => setSelectedTone(tone)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium" style={{ color: '#3A3936' }}>
-                        {getToneLabel(tone)}
-                      </h3>
-                      
-                      {selectedTone === tone && (
-                        <CheckCircle className="w-4 h-4" style={{ color: '#D5765B' }} />
-                      )}
-                    </div>
-                    
-                    <p className="text-xs font-light" style={{ color: '#66615C' }}>
-                      {getToneDescription(tone)}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            
-            <div className="bg-amber-50 p-3 rounded-md border border-amber-200">
-              <div className="flex items-start space-x-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-amber-800">
-                  Changing the tone will rewrite the content. This action cannot be undone, but previous versions will be saved in the version history.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsToneModalOpen(false)}
-              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
-            >
-              Cancel
-            </Button>
-            
-            <Button
-              onClick={() => selectedTone && handleToneChange(selectedTone)}
-              disabled={isChangingTone || !selectedTone}
-              className="text-white"
-              style={{ backgroundColor: '#D5765B' }}
-            >
-              {isChangingTone ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Changing Tone...
-                </>
-              ) : (
-                <>
-                  <MessageSquare className="w-4 h-4 mr-2" />
-                  Apply {selectedTone ? getToneLabel(selectedTone) : ''} Tone
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Version History Modal */}
-      <Dialog open={isVersionHistoryOpen} onOpenChange={setIsVersionHistoryOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-medium" style={{ color: '#3A3936' }}>
-              Version History
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 my-2">
-            <p className="text-sm" style={{ color: '#66615C' }}>
-              Select a previous version to restore
-            </p>
-            
-            <ScrollArea className="h-[300px] border rounded-md p-2" style={{ borderColor: '#D8D5D2' }}>
-              {currentSectionForHistory && sections.find(s => s.id === currentSectionForHistory)?.versions?.map((version, index, array) => (
-                <div 
-                  key={index}
-                  className="mb-4 pb-4 border-b last:border-0"
-                  style={{ borderColor: '#F1EFEC' }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <Clock className="w-3.5 h-3.5" style={{ color: '#66615C' }} />
-                      <span className="text-xs" style={{ color: '#66615C' }}>
-                        {version.timestamp.toLocaleString()}
-                      </span>
-                    </div>
-                    
-                    {index < array.length - 1 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => restoreVersion(index)}
-                        className="h-7 text-xs"
-                        style={{ borderColor: '#D8D5D2', color: '#66615C' }}
-                      >
-                        <RotateCcw className="w-3 h-3 mr-2" />
-                        Restore
-                      </Button>
-                    )}
-                  </div>
-                  
-                  <div 
-                    className="text-sm p-2 rounded"
-                    style={{ backgroundColor: '#F9F7F4', color: '#3A3936' }}
-                  >
-                    {version.content.split('\n').map((line, i) => (
-                      <React.Fragment key={i}>
-                        {line}
-                        <br />
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </ScrollArea>
-          </div>
-          
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsVersionHistoryOpen(false)}
-              style={{ borderColor: '#D8D5D2', color: '#66615C' }}
-            >
-              Close
             </Button>
           </DialogFooter>
         </DialogContent>
