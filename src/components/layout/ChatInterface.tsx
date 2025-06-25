@@ -354,13 +354,11 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
       // Set input but don't auto-send
       setInput(message);
       
-      // Show the editor panel
+      // Show a coming soon message instead of the old editor
       onContentChange({
-        type: 'post-job-editor',
+        type: 'coming-soon',
         title: 'Job Description Editor',
-        content: 'AI-powered job description generation and editing',
-        activeTask: 'post-job-generate-jd',
-        step: 'initial'
+        content: 'The new AI-powered job description editor is coming soon! It will feature modular sections, hover-based AI tools, and intelligent content generation.'
       });
       
       // Auto-submit if requested (for AI-controlled tools)
