@@ -8,7 +8,7 @@ import { Toaster } from 'sonner';
 import { toast } from 'sonner';
 import type { User } from '@supabase/supabase-js';
 import './App.css';
-import { PasswordResetPage } from '@/components/landing/PasswordResetPage'; // Import PasswordResetPage
+import { PasswordResetPage } from '@/components/auth/PasswordResetPage'; // Import PasswordResetPage
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
