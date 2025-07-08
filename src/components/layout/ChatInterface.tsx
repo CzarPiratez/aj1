@@ -5,12 +5,7 @@ import {
   Bot, 
   Paperclip, 
   Mic,
-  Square,
-  Globe,
-  Loader2,
-  FileText,
-  Link,
-  RefreshCw
+  Square
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';

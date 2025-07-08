@@ -1,6 +1,3 @@
-// Global AI Integration for AidJobs Platform
-// Centralized OpenRouter + DeepSeek configuration with rotating key fallback
-
 export interface AIMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;

@@ -24,168 +24,136 @@ export interface AuthDebugInfo {
 // Storage keys for tracking project info
 const STORAGE_KEYS = {
   LAST_PROJECT_URL: 'aidjobs_last_supabase_url',
-  LAST_PROJECT_ID: 'aidjobs_last_project_id',
-  AUTH_DEBUG_ENABLED: 'aidjobs_auth_debug_enabled',
+  DEBUG_MODE: 'aidjobs_debug_mode',
+  AUTH_DEBUG_INFO: 'aidjobs_auth_debug'
 };
 
 // Extract project ID from Supabase URL
-export function extractProjectId(url: string): string | null {
+function extractProjectId(url: string): string {
   try {
-    const match = url.match(/https:\/\/([a-zA-Z0-9]+)\.supabase\.co/);
-    return match ? match[1] : null;
+    const match = url.match(/https:\/\/([^.]+)\.supabase\.co/);
+    return match ? match[1] : 'unknown';
   } catch {
-    return null;
+    return 'invalid';
   }
-}
-
-// Obfuscate sensitive keys for display
-export function obfuscateKey(key: string, visibleChars: number = 8): string {
-  if (!key || key.length <= visibleChars) return key;
-  const visible = key.substring(0, visibleChars);
-  const hidden = '*'.repeat(Math.min(key.length - visibleChars, 20));
-  return `${visible}${hidden}`;
 }
 
 // Get comprehensive auth debug information
 export async function getAuthDebugInfo(): Promise<AuthDebugInfo> {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-  const currentProjectId = extractProjectId(supabaseUrl);
-  
-  // Get stored project info
-  const lastKnownProjectUrl = localStorage.getItem(STORAGE_KEYS.LAST_PROJECT_URL);
-  
-  let hasSession = false;
-  let sessionValid = false;
-  let userEmail: string | undefined;
-  let userId: string | undefined;
-  let sessionExpiry: string | undefined;
-  let authProvider: string | undefined;
-  let tokenInfo: AuthDebugInfo['tokenInfo'];
 
   try {
     const { data: { session }, error } = await supabase.auth.getSession();
-    
-    if (session && !error) {
-      hasSession = true;
-      sessionValid = true;
-      userEmail = session.user?.email;
-      userId = session.user?.id;
-      authProvider = session.user?.app_metadata?.provider;
-      
-      if (session.expires_at) {
-        sessionExpiry = new Date(session.expires_at * 1000).toISOString();
-      }
-      
-      tokenInfo = {
-        accessToken: obfuscateKey(session.access_token, 12),
-        refreshToken: obfuscateKey(session.refresh_token || '', 12),
-        expiresAt: session.expires_at,
-      };
-    } else if (error) {
-      console.error('Session validation error:', error);
-      sessionValid = false;
-    }
-  } catch (error) {
-    console.error('Error getting session:', error);
-    sessionValid = false;
-  }
 
-  return {
-    supabaseUrl,
-    supabaseAnonKey: obfuscateKey(supabaseAnonKey, 12),
-    hasSession,
-    sessionValid,
-    userEmail,
-    userId,
-    sessionExpiry,
-    lastKnownProjectUrl,
-    currentProjectId,
-    authProvider,
-    tokenInfo,
-  };
+    const debugInfo: AuthDebugInfo = {
+      supabaseUrl,
+      supabaseAnonKey: supabaseAnonKey.substring(0, 20) + '...',
+      hasSession: !!session,
+      sessionValid: !!session && !error,
+      currentProjectId: extractProjectId(supabaseUrl),
+      lastKnownProjectUrl: localStorage.getItem(STORAGE_KEYS.LAST_PROJECT_URL) || undefined
+    };
+
+    if (session && session.user) {
+      debugInfo.userEmail = session.user.email;
+      debugInfo.userId = session.user.id;
+      debugInfo.sessionExpiry = new Date(session.expires_at! * 1000).toISOString();
+      debugInfo.authProvider = session.user.app_metadata?.provider;
+      debugInfo.tokenInfo = {
+        accessToken: session.access_token.substring(0, 20) + '...',
+        refreshToken: session.refresh_token?.substring(0, 20) + '...' || 'none',
+        expiresAt: session.expires_at
+      };
+    }
+
+    return debugInfo;
+  } catch (error) {
+    console.error('Error getting auth debug info:', error);
+    return {
+      supabaseUrl,
+      supabaseAnonKey: supabaseAnonKey.substring(0, 20) + '...',
+      hasSession: false,
+      sessionValid: false,
+      currentProjectId: extractProjectId(supabaseUrl)
+    };
+  }
 }
 
-// Clear all authentication data and storage
+// Clear all authentication data (comprehensive reset)
 export async function clearAllAuthData(): Promise<void> {
-  console.log('🧹 Clearing all authentication data...');
-  
   try {
+    console.log('🧹 Clearing all authentication data...');
+
     // Sign out from Supabase
     await supabase.auth.signOut();
-    console.log('✅ Supabase session cleared');
-  } catch (error) {
-    console.error('Error signing out:', error);
-  }
-  
-  // Clear localStorage
-  try {
-    const keysToRemove = [];
+
+    // Clear all localStorage items related to Supabase auth
+    const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && (
-        key.startsWith('supabase.') ||
+        key.startsWith('supabase.auth.') ||
         key.startsWith('aidjobs_') ||
         key.includes('auth') ||
-        key.includes('session') ||
-        key.includes('token')
+        key.includes('session')
       )) {
         keysToRemove.push(key);
       }
     }
-    
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-    console.log(`✅ Cleared ${keysToRemove.length} localStorage items`);
-  } catch (error) {
-    console.error('Error clearing localStorage:', error);
-  }
-  
-  // Clear sessionStorage
-  try {
-    const keysToRemove = [];
+
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log(`🗑️ Removed: ${key}`);
+    });
+
+    // Clear sessionStorage as well
+    const sessionKeysToRemove: string[] = [];
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
       if (key && (
-        key.startsWith('supabase.') ||
+        key.startsWith('supabase.auth.') ||
         key.startsWith('aidjobs_') ||
-        key.includes('auth') ||
-        key.includes('session') ||
-        key.includes('token')
+        key.includes('auth')
       )) {
-        keysToRemove.push(key);
+        sessionKeysToRemove.push(key);
       }
     }
-    
-    keysToRemove.forEach(key => sessionStorage.removeItem(key));
-    console.log(`✅ Cleared ${keysToRemove.length} sessionStorage items`);
+
+    sessionKeysToRemove.forEach(key => {
+      sessionStorage.removeItem(key);
+      console.log(`🗑️ Removed from session: ${key}`);
+    });
+
+    console.log(`✅ Cleared ${keysToRemove.length + sessionKeysToRemove.length} auth-related items`);
+
   } catch (error) {
-    console.error('Error clearing sessionStorage:', error);
+    console.error('Error clearing auth data:', error);
+    throw error;
   }
-  
-  console.log('🎉 All authentication data cleared');
 }
 
 // Check for project URL changes and warn if different
 export function checkProjectUrlChange(): { hasChanged: boolean; warning?: string } {
   const currentUrl = import.meta.env.VITE_SUPABASE_URL;
   const lastKnownUrl = localStorage.getItem(STORAGE_KEYS.LAST_PROJECT_URL);
-  
+
   if (!lastKnownUrl) {
     // First time - store current URL
     localStorage.setItem(STORAGE_KEYS.LAST_PROJECT_URL, currentUrl);
     return { hasChanged: false };
   }
-  
+
   if (currentUrl !== lastKnownUrl) {
     const currentProjectId = extractProjectId(currentUrl);
     const lastProjectId = extractProjectId(lastKnownUrl);
-    
+
     return {
       hasChanged: true,
       warning: `⚠️ Supabase project URL has changed!\n\nPrevious: ${lastKnownUrl} (${lastProjectId})\nCurrent: ${currentUrl} (${currentProjectId})\n\nThis may cause authentication issues. Consider clearing auth data.`
     };
   }
-  
+
   return { hasChanged: false };
 }
 
@@ -199,17 +167,17 @@ export function updateStoredProjectUrl(): void {
 // Auto-cleanup on app load
 export async function autoCleanupOnLoad(): Promise<void> {
   console.log('🔍 Running auto-cleanup check...');
-  
+
   try {
     // Check if we have a valid session
     const { data: { session }, error } = await supabase.auth.getSession();
-    
+
     if (error || !session) {
       console.log('🧹 No valid session found, running cleanup...');
-      
+
       // Clear any stale auth data
       await supabase.auth.signOut();
-      
+
       // Clear potentially stale localStorage items
       const authKeys = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -218,70 +186,40 @@ export async function autoCleanupOnLoad(): Promise<void> {
           authKeys.push(key);
         }
       }
-      
+
       authKeys.forEach(key => localStorage.removeItem(key));
-      
+
       if (authKeys.length > 0) {
         console.log(`✅ Cleaned up ${authKeys.length} stale auth items`);
       }
     } else {
       console.log('✅ Valid session found, no cleanup needed');
     }
-    
+
     // Check for project URL changes
     const urlCheck = checkProjectUrlChange();
     if (urlCheck.hasChanged && urlCheck.warning) {
       console.warn(urlCheck.warning);
     }
-    
+
   } catch (error) {
     console.error('Error during auto-cleanup:', error);
   }
 }
 
-// Log authentication events for debugging
-export function logAuthEvent(event: string, details?: any): void {
-  const timestamp = new Date().toISOString();
-  const projectId = extractProjectId(import.meta.env.VITE_SUPABASE_URL || '');
-  
-  console.log(`🔐 [${timestamp}] Auth Event: ${event}`, {
-    projectId,
-    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-    details,
-  });
-  
-  // Store in localStorage for debugging history
-  try {
-    const logKey = 'aidjobs_auth_debug_log';
-    const existingLog = JSON.parse(localStorage.getItem(logKey) || '[]');
-    
-    existingLog.push({
-      timestamp,
-      event,
-      projectId,
-      details,
-    });
-    
-    // Keep only last 50 events
-    const trimmedLog = existingLog.slice(-50);
-    localStorage.setItem(logKey, JSON.stringify(trimmedLog));
-  } catch (error) {
-    console.error('Error storing auth debug log:', error);
-  }
+// Enable debug mode
+export function enableDebugMode(): void {
+  localStorage.setItem(STORAGE_KEYS.DEBUG_MODE, 'true');
+  console.log('🐛 Auth debug mode enabled');
 }
 
-// Get auth debug log
-export function getAuthDebugLog(): any[] {
-  try {
-    const logKey = 'aidjobs_auth_debug_log';
-    return JSON.parse(localStorage.getItem(logKey) || '[]');
-  } catch {
-    return [];
-  }
+// Disable debug mode
+export function disableDebugMode(): void {
+  localStorage.removeItem(STORAGE_KEYS.DEBUG_MODE);
+  console.log('🐛 Auth debug mode disabled');
 }
 
-// Clear auth debug log
-export function clearAuthDebugLog(): void {
-  localStorage.removeItem('aidjobs_auth_debug_log');
-  console.log('🗑️ Auth debug log cleared');
+// Check if debug mode is enabled
+export function isDebugModeEnabled(): boolean {
+  return localStorage.getItem(STORAGE_KEYS.DEBUG_MODE) === 'true';
 }
