@@ -26,31 +26,17 @@ function App() {
         if (error) {
           console.error('❌ Supabase session error:', error);
           
-          // Check for specific refresh token error
-          if (error.message && error.message.includes('Invalid Refresh Token: Refresh Token Not Found')) {
-            console.log('🧹 Detected stale refresh token, clearing auth data and reloading...');
-            
-            toast.error('Authentication session expired', {
-              description: 'Clearing stale data and reloading the application...',
-              duration: 3000,
-            });
-            
-            // Clear all stale authentication data
-            await clearAllAuthData();
-            
-            // Reload the page to start fresh
-            setTimeout(() => {
-              window.location.reload();
-            }, 1000);
-            
-            return;
-          }
+          // Check for specific refresh token or network errors
+          const shouldReload = error.message && (
+            error.message.includes('Invalid Refresh Token: Refresh Token Not Found') ||
+            error.message.includes('Failed to fetch')
+          );
           
-          // Check for Failed to fetch error
-          if (error.message && error.message.includes('Failed to fetch')) {
-            console.log('🧹 Detected network/fetch error, clearing auth data and reloading...');
+          if (shouldReload) {
+            const isTokenError = error.message.includes('Invalid Refresh Token');
+            console.log(`🧹 Detected ${isTokenError ? 'stale refresh token' : 'network/fetch error'}, clearing auth data and reloading...`);
             
-            toast.error('Network connection error', {
+            toast.error(isTokenError ? 'Authentication session expired' : 'Network connection error', {
               description: 'Clearing stale data and reloading the application...',
               duration: 3000,
             });
@@ -92,14 +78,8 @@ function App() {
             duration: 3000,
           });
           
-          // Clear all stale authentication data
           await clearAllAuthData();
-          
-          // Reload the page to start fresh
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-          
+          setTimeout(() => window.location.reload(), 1000);
           return;
         }
         

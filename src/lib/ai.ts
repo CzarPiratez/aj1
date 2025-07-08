@@ -76,12 +76,12 @@ async function logError(
       try {
         const { data: { user } } = await supabase.auth.getUser();
         finalUserId = user?.id || null;
-      } catch (authError) {
+      } catch {
         finalUserId = null;
       }
     }
     
-    const { error } = await supabase
+    await supabase
       .from('error_logs')
       .insert({
         user_id: finalUserId,
@@ -90,10 +90,6 @@ async function logError(
         source: source,
         created_at: new Date().toISOString()
       });
-
-    if (error) {
-      console.error('Failed to log error to database:', error);
-    }
   } catch (error) {
     console.error('Failed to log error to database:', error);
   }
@@ -210,15 +206,11 @@ export async function callOpenRouter(
         }
         
         // Log non-rate-limit errors
-        try {
-          await logError(
-            'AI_API_ERROR',
-            errorMessage,
-            `callOpenRouter - ${keyName}`
-          );
-        } catch (logError) {
-          console.warn('Could not log error to database:', logError);
-        }
+        await logError(
+          'AI_API_ERROR',
+          errorMessage,
+          `callOpenRouter - ${keyName}`
+        );
         
         lastError = new Error(errorMessage);
         failedKeys.push(keyName);
@@ -230,15 +222,11 @@ export async function callOpenRouter(
       if (!validateAIResponse(data)) {
         const errorMessage = 'Invalid or insufficient response from AI model';
         
-        try {
-          await logError(
-            'AI_VALIDATION_ERROR',
-            `${errorMessage} - Response: ${JSON.stringify(data)}`,
-            `callOpenRouter - ${keyName}`
-          );
-        } catch (logError) {
-          console.warn('Could not log error to database:', logError);
-        }
+        await logError(
+          'AI_VALIDATION_ERROR',
+          `${errorMessage} - Response: ${JSON.stringify(data)}`,
+          `callOpenRouter - ${keyName}`
+        );
         
         lastError = new Error(errorMessage);
         failedKeys.push(keyName);
@@ -292,15 +280,11 @@ Failed keys: ${failedKeys.join(', ')}
 Last error: ${lastError?.message}`;
   }
   
-  try {
-    await logError(
-      'AI_ALL_KEYS_FAILED',
-      `All ${API_KEYS.length} keys failed. Rate limited: ${rateLimitedKeys.length}, Failed: ${failedKeys.length}. Last error: ${lastError?.message}`,
-      'callOpenRouter'
-    );
-  } catch (logError) {
-    console.warn('Could not log error to database:', logError);
-  }
+  await logError(
+    'AI_ALL_KEYS_FAILED',
+    `All ${API_KEYS.length} keys failed. Rate limited: ${rateLimitedKeys.length}, Failed: ${failedKeys.length}. Last error: ${lastError?.message}`,
+    'callOpenRouter'
+  );
   
   throw new Error(errorMessage);
 }
@@ -672,15 +656,11 @@ export async function checkAIStatus(): Promise<{
     
     // Only log non-rate-limit errors
     if (!errorMessage.includes('429') && !errorMessage.includes('rate limit')) {
-      try {
-        await logError(
-          'AI_STATUS_CHECK_ERROR',
-          errorMessage,
-          'checkAIStatus'
-        );
-      } catch (logError) {
-        console.warn('Could not log error to database:', logError);
-      }
+      await logError(
+        'AI_STATUS_CHECK_ERROR',
+        errorMessage,
+        'checkAIStatus'
+      );
     }
     
     return {

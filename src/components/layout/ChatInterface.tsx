@@ -552,13 +552,7 @@ Your job is to keep the flow intelligent, natural, helpful, and resilient.`;
         await updateFlag('has_written_cover_letter', true);
       }
     } catch (error) {
-      console.error('Error updating progress based on input:', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        userInput,
-        userId: profile?.id
-      });
-      
-      // Show user-friendly error message
+      console.error('Error updating progress based on input:', error);
       toast.error('Failed to update progress. Please try again.');
     }
   };
