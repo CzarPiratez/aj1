@@ -34,13 +34,13 @@ export function LandingPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please fill in all required fields');
       return;
@@ -72,9 +72,9 @@ export function LandingPage() {
           email: email.trim().toLowerCase(),
           password,
         });
-        
+
         if (error) throw error;
-        
+
         // Verify user profile exists
         if (data.user) {
           const { error: profileError } = await supabase
@@ -82,7 +82,7 @@ export function LandingPage() {
             .select('id')
             .eq('id', data.user.id)
             .single();
-          
+
           if (profileError && profileError.code === 'PGRST116') {
             // Profile doesn't exist, create it
             const { error: createError } = await supabase
@@ -93,13 +93,13 @@ export function LandingPage() {
                 full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || '',
                 avatar_url: data.user.user_metadata?.avatar_url || null,
               });
-            
+
             if (createError) {
               console.error('Error creating user profile:', createError);
             }
           }
         }
-        
+
         toast.success('Welcome back to AidJobs!');
       } else {
         const { data, error } = await supabase.auth.signUp({
@@ -112,22 +112,22 @@ export function LandingPage() {
             },
           },
         });
-        
+
         if (error) throw error;
-        
+
         if (data.user && !data.user.email_confirmed_at) {
           setShowSuccessMessage(true);
         } else {
           toast.success('Account created successfully!');
         }
-        
+
         setEmail('');
         setPassword('');
         setName('');
       }
     } catch (error: any) {
       let errorMessage = 'An error occurred. Please try again.';
-      
+
       if (error.message?.includes('Invalid login credentials')) {
         errorMessage = 'Invalid email or password. Please check your credentials and try again.';
       } else if (error.message?.includes('Email not confirmed')) {
@@ -143,12 +143,46 @@ export function LandingPage() {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
+
+    const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+
+      if (error) throw error;
+
+      setResetEmailSent(true);
+      toast.success('Password reset email sent!');
+
+    } catch (error: any) {
+      let errorMessage = 'An error occurred. Please try again.';
+
+      if (error.message?.includes('User not found')) {
+        errorMessage = 'There is no user with this email address. Please check your email and try again.';
+      } else if (error.message?.includes('Unable to validate email address')) {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (error.message?.includes('Email rate limit exceeded')) {
+        errorMessage = 'Too many requests. Please wait a moment before trying again.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      toast.error(errorMessage);
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
@@ -169,7 +203,7 @@ export function LandingPage() {
       <div className="h-full overflow-auto">
         <div className="container mx-auto px-4 py-4">
           <div className="grid lg:grid-cols-12 gap-8 items-center max-w-6xl mx-auto min-h-[calc(100vh-120px)]">
-            
+
             {/* Left Column - Form Card (Reduced width by 15% + 20px spacing) */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
@@ -261,174 +295,256 @@ export function LandingPage() {
                   </motion.p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <AnimatePresence mode="wait">
-                    {!isLogin && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="space-y-1"
-                      >
-                        <Label 
-                          htmlFor="name" 
-                          className="text-xs font-normal"
-                          style={{ color: '#3A3936' }}
-                        >
-                          Full Name
-                        </Label>
-                        <div className="relative">
-                          <User 
-                            className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
-                            style={{ color: '#66615C' }}
-                          />
-                          <Input
-                            id="name"
-                            type="text"
-                            placeholder="Enter your full name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="pl-9 h-10 rounded-xl border font-light text-sm"
-                            style={{ 
-                              backgroundColor: '#FFFFFF',
-                              borderColor: '#D8D5D2',
-                              color: '#3A3936'
-                            }}
-                            required={!isLogin}
-                            disabled={loading}
-                          />
+                {showForgotPassword ? (
+                  <form onSubmit={handleForgotPassword} className="space-y-4">
+                    {resetEmailSent ? (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="space-y-1">
-                    <Label 
-                      htmlFor="email" 
-                      className="text-xs font-normal"
-                      style={{ color: '#3A3936' }}
-                    >
-                      Email
-                    </Label>
-                    <div className="relative">
-                      <Mail 
-                        className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
-                        style={{ color: '#66615C' }}
-                      />
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="Enter your email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-9 h-10 rounded-xl border font-light text-sm"
-                        style={{ 
-                          backgroundColor: '#FFFFFF',
-                          borderColor: '#D8D5D2',
-                          color: '#3A3936'
-                        }}
-                        required
-                        disabled={loading}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <Label 
-                      htmlFor="password" 
-                      className="text-xs font-normal"
-                      style={{ color: '#3A3936' }}
-                    >
-                      Password
-                    </Label>
-                    <div className="relative">
-                      <Lock 
-                        className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
-                        style={{ color: '#66615C' }}
-                      />
-                      <Input
-                        id="password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Enter your password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-9 pr-9 h-10 rounded-xl border font-light text-sm"
-                        style={{ 
-                          backgroundColor: '#FFFFFF',
-                          borderColor: '#D8D5D2',
-                          color: '#3A3936'
-                        }}
-                        required
-                        disabled={loading}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 hover:opacity-70 transition-opacity duration-200"
-                        style={{ color: '#66615C' }}
-                        disabled={loading}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-3 h-3" />
-                        ) : (
-                          <Eye className="w-3 h-3" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full h-10 rounded-xl font-normal text-white hover:opacity-90 transition-opacity duration-200 flex items-center justify-center gap-2 text-sm"
-                    style={{ backgroundColor: '#D5765B' }}
-                  >
-                    {loading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                        <span className="text-xs">{isLogin ? 'Signing in...' : 'Creating account...'}</span>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">Email Sent!</h3>
+                        <p className="text-gray-600 mb-6">
+                          We've sent a password reset link to <strong>{email}</strong>. 
+                          Check your inbox and follow the instructions to reset your password.
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setShowForgotPassword(false);
+                            setResetEmailSent(false);
+                            setEmail('');
+                          }}
+                          className="text-orange-600 hover:text-orange-700 font-medium"
+                        >
+                          Back to Sign In
+                        </Button>
                       </div>
                     ) : (
                       <>
-                        {isLogin ? 'Get Started' : 'Create Account'}
-                        <ArrowRight className="w-3 h-3" />
+                        <div className="text-center mb-6">
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">Reset Your Password</h3>
+                          <p className="text-gray-600">
+                            Enter your email address and we'll send you a link to reset your password.
+                          </p>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor="reset-email" className="text-xs font-normal" style={{ color: '#3A3936' }}>
+                            Email Address
+                          </Label>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3" style={{ color: '#66615C' }} />
+                            <Input
+                              id="reset-email"
+                              type="email"
+                              value={email}
+                              onChange={(e) => setEmail(e.target.value)}
+                              required
+                              className="pl-9 h-10 rounded-xl border font-light text-sm"
+                              style={{
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#D8D5D2',
+                                color: '#3A3936'
+                              }}
+                            />
+                          </div>
+                        </div>
+
+                        <Button
+                          type="submit"
+                          disabled={loading}
+                          className="w-full h-10 rounded-xl font-normal text-white hover:opacity-90 transition-opacity duration-200 flex items-center justify-center gap-2 text-sm"
+                          style={{ backgroundColor: '#D5765B' }}
+                        >
+                          {loading ? 'Sending...' : 'Send Reset Email'}
+                        </Button>
+
+                        <Button
+                          type="button"
+                          onClick={() => setShowForgotPassword(false)}
+                          className="w-full text-gray-600 hover:text-gray-800 font-medium py-2"
+                        >
+                          Back to Sign In
+                        </Button>
                       </>
                     )}
-                  </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                    <AnimatePresence mode="wait">
+                      {!isLogin && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="space-y-1"
+                        >
+                          <Label
+                            htmlFor="name"
+                            className="text-xs font-normal"
+                            style={{ color: '#3A3936' }}
+                          >
+                            Full Name
+                          </Label>
+                          <div className="relative">
+                            <User
+                              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
+                              style={{ color: '#66615C' }}
+                            />
+                            <Input
+                              id="name"
+                              type="text"
+                              placeholder="Enter your full name"
+                              value={name}
+                              onChange={(e) => setName(e.target.value)}
+                              className="pl-9 h-10 rounded-xl border font-light text-sm"
+                              style={{
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#D8D5D2',
+                                color: '#3A3936'
+                              }}
+                              required={!isLogin}
+                              disabled={loading}
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                  {/* Toggle between Sign In and Sign Up */}
-                  <div className="text-center space-y-2">
-                    {isLogin && (
-                      <button
-                        type="button"
-                        className="block text-xs font-light hover:opacity-70 transition-opacity duration-200 mx-auto"
-                        style={{ color: '#66615C' }}
-                        disabled={loading}
+                    <div className="space-y-1">
+                      <Label
+                        htmlFor="email"
+                        className="text-xs font-normal"
+                        style={{ color: '#3A3936' }}
                       >
-                        Forgot Password?
-                      </button>
-                    )}
-                    
-                    <div className="flex items-center justify-center">
-                      <span 
-                        className="text-xs font-light mr-1"
-                        style={{ color: '#66615C' }}
-                      >
-                        {isLogin ? "Don't have an account?" : "Already have an account?"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={toggleMode}
-                        className="text-xs font-normal hover:opacity-70 transition-opacity duration-200 underline underline-offset-2"
-                        style={{ color: '#D5765B' }}
-                        disabled={loading}
-                      >
-                        {isLogin ? 'Sign up' : 'Sign in'}
-                      </button>
+                        Email
+                      </Label>
+                      <div className="relative">
+                        <Mail
+                          className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
+                          style={{ color: '#66615C' }}
+                        />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="Enter your email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="pl-9 h-10 rounded-xl border font-light text-sm"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderColor: '#D8D5D2',
+                            color: '#3A3936'
+                          }}
+                          required
+                          disabled={loading}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </form>
+
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <Label
+                          htmlFor="password"
+                          className="text-xs font-normal"
+                          style={{ color: '#3A3936' }}
+                        >
+                          Password
+                        </Label>
+                        {isLogin && (
+                          <Button
+                            type="button"
+                            variant="link"
+                            onClick={() => setShowForgotPassword(true)}
+                            className="text-xs font-normal hover:opacity-70 transition-opacity duration-200"
+                            style={{ color: '#66615C' }}
+                            disabled={loading}
+                          >
+                            Forgot Password?
+                          </Button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <Lock
+                          className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3"
+                          style={{ color: '#66615C' }}
+                        />
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="Enter your password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="pl-9 pr-9 h-10 rounded-xl border font-light text-sm"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderColor: '#D8D5D2',
+                            color: '#3A3936'
+                          }}
+                          required
+                          disabled={loading}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 hover:opacity-70 transition-opacity duration-200"
+                          style={{ color: '#66615C' }}
+                          disabled={loading}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="w-3 h-3" />
+                          ) : (
+                            <Eye className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full h-10 rounded-xl font-normal text-white hover:opacity-90 transition-opacity duration-200 flex items-center justify-center gap-2 text-sm"
+                      style={{ backgroundColor: '#D5765B' }}
+                    >
+                      {loading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                          <span className="text-xs">{isLogin ? 'Signing in...' : 'Creating account...'}</span>
+                        </div>
+                      ) : (
+                        <>
+                          {isLogin ? 'Get Started' : 'Create Account'}
+                          <ArrowRight className="w-3 h-3" />
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Toggle between Sign In and Sign Up */}
+                    <div className="text-center space-y-2">
+
+                      <div className="flex items-center justify-center">
+                        <span
+                          className="text-xs font-light mr-1"
+                          style={{ color: '#66615C' }}
+                        >
+                          {isLogin ? "Don't have an account?" : "Already have an account?"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={toggleMode}
+                          className="text-xs font-normal hover:opacity-70 transition-opacity duration-200 underline underline-offset-2"
+                          style={{ color: '#D5765B' }}
+                          disabled={loading}
+                        >
+                          {isLogin ? 'Sign up' : 'Sign in'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                )}
               </div>
             </motion.div>
 
@@ -592,7 +708,7 @@ export function LandingPage() {
                     Real-time
                   </Badge>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                   {impactStats.map((stat, index) => (
                     <motion.div

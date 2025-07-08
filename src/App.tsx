@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { clearAllAuthData } from '@/lib/authDebug';
 import { LandingPage } from '@/components/landing/LandingPage';
@@ -8,6 +8,7 @@ import { Toaster } from 'sonner';
 import { toast } from 'sonner';
 import type { User } from '@supabase/supabase-js';
 import './App.css';
+import { PasswordResetPage } from '@/components/landing/PasswordResetPage'; // Import PasswordResetPage
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -20,74 +21,74 @@ function App() {
     const getSession = async () => {
       try {
         console.log('🔄 Attempting to get Supabase session...');
-        
+
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
         if (error) {
           console.error('❌ Supabase session error:', error);
-          
+
           // Check for specific refresh token or network errors
           const shouldReload = error.message && (
             error.message.includes('Invalid Refresh Token: Refresh Token Not Found') ||
             error.message.includes('Failed to fetch')
           );
-          
+
           if (shouldReload) {
             const isTokenError = error.message.includes('Invalid Refresh Token');
             console.log(`🧹 Detected ${isTokenError ? 'stale refresh token' : 'network/fetch error'}, clearing auth data and reloading...`);
-            
+
             toast.error(isTokenError ? 'Authentication session expired' : 'Network connection error', {
               description: 'Clearing stale data and reloading the application...',
               duration: 3000,
             });
-            
+
             // Clear all stale authentication data
             await clearAllAuthData();
-            
+
             // Reload the page to start fresh
             setTimeout(() => {
               window.location.reload();
             }, 1000);
-            
+
             return;
           }
-          
+
           toast.error(`Supabase connection error: ${error.message}`, {
             description: 'Please check your environment variables and try refreshing the page.',
             duration: 10000,
           });
           throw error;
         }
-        
+
         console.log('✅ Supabase session retrieved successfully');
-        
+
         setUser(session?.user ?? null);
         setInitialLoad(false);
       } catch (error) {
         console.error('❌ Error getting session:', error);
-        
+
         // Show detailed error message to user
         const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-        
+
         // Check for Failed to fetch in catch block as well
         if (errorMessage.includes('Failed to fetch')) {
           console.log('🧹 Detected network/fetch error in catch, clearing auth data and reloading...');
-          
+
           toast.error('Network connection error', {
             description: 'Clearing stale data and reloading the application...',
             duration: 3000,
           });
-          
+
           await clearAllAuthData();
           setTimeout(() => window.location.reload(), 1000);
           return;
         }
-        
+
         toast.error('Failed to connect to Supabase', {
           description: `Error: ${errorMessage}. Please check the console for more details and verify your Supabase configuration.`,
           duration: 15000,
         });
-        
+
         setUser(null);
         setInitialLoad(false);
       } finally {
@@ -101,12 +102,12 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔄 Auth event:', event, 'Session exists:', !!session);
-        
+
         try {
           const newUser = session?.user ?? null;
           setUser(newUser);
           setLoading(false);
-          
+
           // Only show toast messages for actual auth events, not session validations
           // and only after the initial load is complete
           if (!initialLoad && event !== 'TOKEN_REFRESHED') {
@@ -114,7 +115,7 @@ function App() {
             const eventKey = `${event}-${newUser?.id || 'none'}`;
             if (lastAuthEventRef.current !== eventKey) {
               lastAuthEventRef.current = eventKey;
-              
+
               if (event === 'SIGNED_IN' && newUser) {
                 toast.success('Successfully signed in!');
               } else if (event === 'SIGNED_OUT') {
@@ -126,7 +127,7 @@ function App() {
           }
         } catch (error) {
           console.error('❌ Auth state change error:', error);
-          
+
           toast.error('Authentication error occurred', {
             description: 'Please try refreshing the page.',
             duration: 8000,
@@ -177,13 +178,17 @@ function App() {
 
   return (
     <Router>
-      <div className="h-screen w-screen overflow-hidden">
-        {user ? (
-          <AuthenticatedLayout user={user} />
-        ) : (
-          <LandingPage />
-        )}
-        
+      <div className="App">
+        <Routes>
+          <Route 
+            path="/reset-password" 
+            element={<PasswordResetPage />} 
+          />
+          <Route 
+            path="*" 
+            element={user ? <AuthenticatedLayout user={user} /> : <LandingPage />} 
+          />
+        </Routes>
         <Toaster 
           position="top-right"
           toastOptions={{
