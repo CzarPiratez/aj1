@@ -37,7 +37,7 @@ export function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
-  const [, setShowSuccessMessage] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,7 +215,7 @@ export function LandingPage() {
             >
               {/* Success Message Banner */}
               <AnimatePresence>
-                {setShowSuccessMessage() && (
+              {showSuccessMessage && (
                   <motion.div
                     initial={{ opacity: 0, y: -20, height: 0 }}
                     animate={{ opacity: 1, y: 0, height: 'auto' }}
