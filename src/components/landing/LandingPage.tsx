@@ -37,7 +37,7 @@ export function LandingPage() {
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
-
+  const [, setShowSuccessMessage] = useState(false);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -189,7 +189,7 @@ export function LandingPage() {
     setEmail('');
     setPassword('');
     setName('');
-    setShowPassword(false);
+    setPassword(false);
     setShowSuccessMessage(false);
   };
 
@@ -214,7 +214,7 @@ export function LandingPage() {
             >
               {/* Success Message Banner */}
               <AnimatePresence>
-                {showSuccessMessage && (
+                {setShowSuccessMessage() && (
                   <motion.div
                     initial={{ opacity: 0, y: -20, height: 0 }}
                     animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -474,7 +474,7 @@ export function LandingPage() {
                         />
                         <Input
                           id="password"
-                          type={showPassword ? 'text' : 'password'}
+                          type={password ? 'text' : 'password'}
                           placeholder="Enter your password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
@@ -489,12 +489,12 @@ export function LandingPage() {
                         />
                         <button
                           type="button"
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() => setPassword(!password)}
                           className="absolute right-3 top-1/2 transform -translate-y-1/2 hover:opacity-70 transition-opacity duration-200"
                           style={{ color: '#66615C' }}
                           disabled={loading}
                         >
-                          {showPassword ? (
+                          {password ? (
                             <EyeOff className="w-3 h-3" />
                           ) : (
                             <Eye className="w-3 h-3" />
@@ -815,3 +815,5 @@ const impactStats = [
     change: 12
   }
 ];
+
+
