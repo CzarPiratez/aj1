@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Mail, 
@@ -38,7 +38,8 @@ export function LandingPage() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [, setShowSuccessMessage] = useState(false);
-  const handleSubmit = async (e: React.FormEvent) => {
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!email || !password) {
@@ -148,7 +149,7 @@ export function LandingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [email, password, isLogin, name]);
 
     const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -815,5 +816,3 @@ const impactStats = [
     change: 12
   }
 ];
-
-
