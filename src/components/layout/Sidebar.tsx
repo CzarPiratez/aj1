@@ -92,6 +92,7 @@ const menuItems = [
 
 export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = false }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const [isHovered, setIsHovered] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [showAuthDebug, setShowAuthDebug] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
@@ -118,17 +119,22 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                          window.location.hostname === 'localhost' ||
                          window.location.hostname.includes('127.0.0.1');
 
-  const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => (
-    <TooltipProvider delayDuration={300}>
-      <div 
-        className="flex flex-col h-full transition-all duration-300 ease-in-out"
-        style={{ backgroundColor: '#F1EFEC' }}
-      >
+  const SidebarContent = ({ isMobile = false }: { isMobile?: boolean }) => {
+    const shouldShowExpanded = !isCollapsed || isHovered || isMobile;
+    
+    return (
+      <TooltipProvider delayDuration={300}>
+        <div 
+          className="flex flex-col h-full transition-all duration-300 ease-in-out"
+          style={{ backgroundColor: '#F1EFEC' }}
+          onMouseEnter={() => !isMobile && setIsHovered(true)}
+          onMouseLeave={() => !isMobile && setIsHovered(false)}
+        >
         {/* Header - Optimized for reduced width */}
         <div className="p-2.5 border-b" style={{ borderColor: '#D8D5D2' }}>
           <div className="flex items-center justify-between">
             <AnimatePresence>
-              {(!isCollapsed || isMobile) && (
+              {shouldShowExpanded && (
                 <motion.div
                   initial={{ opacity: 0, width: 0 }}
                   animate={{ opacity: 1, width: 'auto' }}
@@ -229,7 +235,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
               </AvatarFallback>
             </Avatar>
             <AnimatePresence>
-              {(!isCollapsed || isMobile) && (
+              {shouldShowExpanded && (
                 <motion.div
                   initial={{ opacity: 0, width: 0 }}
                   animate={{ opacity: 1, width: 'auto' }}
@@ -313,7 +319,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                             }}
                           />
                           <AnimatePresence>
-                            {(!isCollapsed || isMobile) && (
+                            {shouldShowExpanded && (
                               <motion.span
                                 initial={{ opacity: 0, width: 0 }}
                                 animate={{ opacity: 1, width: 'auto' }}
@@ -328,7 +334,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                         </div>
                         
                         <AnimatePresence>
-                          {(!isCollapsed || isMobile) && (
+                          {shouldShowExpanded && (
                             <motion.div
                               initial={{ opacity: 0, width: 0 }}
                               animate={{ opacity: 1, width: 'auto' }}
@@ -347,7 +353,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                     
                     <CollapsibleContent>
                       <AnimatePresence>
-                        {(!isCollapsed || isMobile) && item.subItems && (
+                        {shouldShowExpanded && item.subItems && (
                           <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
@@ -442,7 +448,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                           }}
                         />
                         <AnimatePresence>
-                          {(!isCollapsed || isMobile) && (
+                          {shouldShowExpanded && (
                             <motion.span
                               initial={{ opacity: 0, width: 0 }}
                               animate={{ opacity: 1, width: 'auto' }}
@@ -519,7 +525,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                       style={{ color: '#D5765B' }}
                     />
                     <AnimatePresence>
-                      {(!isCollapsed || isMobile) && (
+                      {shouldShowExpanded && (
                         <motion.span
                           initial={{ opacity: 0, width: 0 }}
                           animate={{ opacity: 1, width: 'auto' }}
@@ -613,7 +619,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                       }}
                     />
                     <AnimatePresence>
-                      {(!isCollapsed || isMobile) && (
+                      {shouldShowExpanded && (
                         <motion.span
                           initial={{ opacity: 0, width: 0 }}
                           animate={{ opacity: 1, width: 'auto' }}
@@ -675,7 +681,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
                 >
                   <LogOut className="w-3 h-3 mr-2 flex-shrink-0" />
                   <AnimatePresence>
-                    {(!isCollapsed || isMobile) && (
+                    {shouldShowExpanded && (
                       <motion.span
                         initial={{ opacity: 0, width: 0 }}
                         animate={{ opacity: 1, width: 'auto' }}
@@ -726,6 +732,7 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
       />
     </TooltipProvider>
   );
+};
 
   return (
     <>
@@ -772,9 +779,9 @@ export function Sidebar({ currentPage, onNavigate, profile, defaultCollapsed = f
         )}
       </AnimatePresence>
 
-      {/* Desktop Sidebar - Reduced widths */}
+      {/* Desktop Sidebar - Expands on hover when collapsed */}
       <motion.div
-        animate={{ width: isCollapsed ? 55 : 225 }} // Reduced from 58/233 to 55/225 (3px/8px reduction)
+        animate={{ width: (isCollapsed && !isHovered) ? 55 : 225 }}
         transition={{ duration: 0.3, ease: "easeInOut" }}
         className="hidden lg:block h-full flex-shrink-0"
       >
